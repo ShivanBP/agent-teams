@@ -1,0 +1,16 @@
+state/
+logs/
+__pycache__/
+*.pyc
+.venv
+.DS_Store
+.mcp.json
+.private/
+memory/
+plans/
+agents/*
+!agents/.gitkeep
+launchd/*.plist
+config/persona-matrix.json
+config/harness-defaults.json
+config/model-effort-defaults.json

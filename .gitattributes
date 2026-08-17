@@ -1,0 +1,4 @@
+memory export-ignore
+plans export-ignore
+STATE.md export-ignore
+scripts/sweep-login.sh export-ignore

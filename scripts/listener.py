@@ -1,0 +1,899 @@
+"""The daemon: eight identities, one thread each, wakes only. Phase 3 grows the operator rails on
+top of this file: Rail A continues an open loop after a persona's wake lands (handle_rail_a),
+Rail B answers a direct tag of the "bridge" identity from Mate (handle_operator_tag), and a
+background thread pauses loops behind inflight rows that stalled (stall_sweep_thread).
+
+The zulip pip library is imported only in this module (amendment 6); everything else in the
+daemon path (store, personas, prompts, runner, loops) stays stdlib.
+"""
+
+import argparse
+import logging
+import sys
+import threading
+import time
+
+import api
+import constants
+import loops
+import personas
+import prompts
+import read as read_mod
+import runner
+import send as send_mod
+import store
+
+log = logging.getLogger("agent-team.listener")
+
+IDENTITIES = list(personas.PERSONAS) + [constants.OPERATOR_IDENTITY]
+
+_MATE_ID = {}
+
+
+# --- pure helpers (table-tested by --selftest) -------------------------------------------------
+
+def is_mention(event):
+    """Flags ride on the EVENT object, not inside message (verified live 2026-08-12); message-level is the backfill fallback."""
+    msg = event.get("message") or {}
+    return "mentioned" in (event.get("flags") or msg.get("flags") or [])
+
+
+def is_persona_sender(sender_email, persona_emails):
+    return bool(sender_email) and sender_email in persona_emails
+
+
+def is_resolved_topic(topic_name):
+    """A topic is an open session (ruling 7): a name starting with the resolve marker is resolved.
+    Reopening (removing the marker) starts a fresh session by design; nothing resurrects the old one."""
+    return (topic_name or "").strip().startswith(constants.RESOLVED_PREFIX)
+
+
+FLAG_WORDS = ("-opus", "-fable", "-sonnet", "-low", "-mid", "-high", "-xtra",
+              "-codex", "-claude", "-agy", "-opencode")
+FLAG_TO_MODEL = {"-opus": "opus", "-fable": "fable", "-sonnet": "sonnet"}
+FLAG_TO_EFFORT = {"-low": "low", "-mid": "mid", "-high": "high", "-xtra": "xtra"}
+FLAG_TO_PROVIDER = {"-claude": "claude", "-codex": "codex", "-agy": "agy", "-opencode": "opencode"}
+PROVIDER_PERSONAS = {
+    "claude": set(personas.PERSONAS),
+    "codex": set(personas.PERSONAS),
+    "agy": set(personas.PERSONAS),
+    "opencode": set(personas.PERSONAS),
+}
+
+
+def parse_flags(content):
+    """Detects flag words for any sender and always strips them from the body, so a persona never
+    sees flag noise. Whether they apply is the caller's call: model/effort/provider flags parse only off
+    Mate's own resolved user id (invariant); handle_wake makes that decision, not this function."""
+    words = (content or "").split()
+    found = [w for w in words if w in FLAG_WORDS]
+    if not found:
+        return [], content
+    stripped = " ".join(w for w in words if w not in FLAG_WORDS)
+    return found, stripped
+
+
+def flags_to_overrides(flags):
+    model = None
+    effort = None
+    for f in flags:
+        model = FLAG_TO_MODEL.get(f, model)
+        effort = FLAG_TO_EFFORT.get(f, effort)
+    return model, effort
+
+
+def provider_for_wake(identity, flags, row, matrix=None):
+    """Last explicit provider, sticky lane, persona default, then Claude."""
+    explicit = None
+    for flag in flags:
+        candidate = FLAG_TO_PROVIDER.get(flag)
+        if candidate and identity in PROVIDER_PERSONAS[candidate]:
+            explicit = candidate
+    if explicit:
+        return explicit
+    if row:
+        return store.session_provider(row)
+    defaults = matrix[identity] if matrix is not None else constants.matrix_defaults(identity)
+    return defaults["provider"]
+
+
+def resolve_wake_settings(identity, provider, model, effort, matrix=None):
+    defaults = matrix[identity] if matrix is not None else constants.matrix_defaults(identity)
+    if provider == defaults["provider"]:
+        run_model = model if provider == "claude" and model else defaults["model"]
+    elif provider == "codex":
+        run_model = constants.CODEX_MODEL
+    elif provider == "agy":
+        run_model = constants.AGY_MODEL
+    elif provider == "opencode":
+        run_model = constants.OPENCODE_MODEL
+    else:
+        run_model = model if provider == "claude" else None
+    if effort:
+        level = effort
+    elif provider == "claude" and model and model in constants.MODEL_EFFORT_DEFAULTS:
+        level = constants.MODEL_EFFORT_DEFAULTS[model]
+    elif provider != defaults["provider"] and provider in constants.HARNESS_DEFAULTS:
+        level = constants.HARNESS_DEFAULTS[provider]["effort"]
+    else:
+        level = defaults["effort"]
+    # the generic level travels beside the harness's translation: the footer reports the word
+    # Mate types (low/mid/high/xtra), not the word the CLI takes.
+    return run_model, constants.translate_effort(provider, level), level
+
+
+def parse_operator_decision(text):
+    """Finds the operator's single decision line ('KICK: <persona> <body>' or 'CLOSE: <reason>')
+    amid any prose; zero or more than one decision line parses to None so a malformed or
+    ambiguous answer never gets read as a kick (never-forge-a-kick, invariant)."""
+    lines = [l.strip() for l in (text or "").strip().splitlines() if l.strip()]
+    decisions = [l for l in lines if l.startswith("KICK:") or l.startswith("CLOSE:")]
+    if len(decisions) != 1:
+        return None
+    line = decisions[0]
+    if line.startswith("KICK:"):
+        rest = line[len("KICK:"):].strip()
+        parts = rest.split(None, 1)
+        if len(parts) == 2 and parts[0]:
+            return ("kick", parts[0], parts[1])
+        return None
+    if line.startswith("CLOSE:"):
+        reason = line[len("CLOSE:"):].strip()
+        if reason:
+            return ("close", reason)
+        return None
+    return None
+
+
+def _location_from_refetch(payload, fallback_channel, fallback_topic):
+    """Pure: turns a GET /messages/<id> refetch payload into (channel, topic), falling back to
+    the wake-time lane when the refetch failed or returned no location. Shared by handle_wake
+    and handle_operator_tag (this file) so a reply lands inside a topic just resolved or moved,
+    instead of forking an unresolved twin, one spelling for both call sites."""
+    if payload.get("result") != "success":
+        return fallback_channel, fallback_topic
+    msg = payload.get("message") or {}
+    return msg.get("display_recipient", fallback_channel), msg.get("subject", fallback_topic)
+
+
+def _close_loop(loop_id, channel, topic, reason):
+    """Closes the loop then posts LOOP_BUDGET_OUT; a failed post is logged, never re-raised.
+    handle_rail_a's budget-reached branch, its kick_record-refused branch, and its close-decision
+    branch shared this shape before extraction."""
+    loops.close(loop_id)
+    try:
+        send_mod.post(constants.OPERATOR_IDENTITY, channel, topic,
+                       prompts.LOOP_BUDGET_OUT.format(reason=reason, mate=mate_mention()))
+    except (Exception, SystemExit):
+        log.exception("failed to post loop-close line for loop %s", loop_id)
+
+
+def _append_cost(persona, lane, result, model=None, level=None):
+    row = {
+        "persona": persona,
+        "lane": lane,
+        "usd": result.cost_usd,
+        "turns": result.turns,
+        "cache_read": result.usage.get("cache_read_input_tokens", 0),
+        "cache_creation": result.usage.get("cache_creation_input_tokens", 0),
+        "input_tokens": result.usage.get("input_tokens", 0),
+        "provider": result.provider,
+        # the footer's own two fields, in the fleet's effort words, so a posted stamp is
+        # checkable against the ledger; the operator rails ask for neither and store null.
+        "model": model,
+        "effort": level,
+    }
+    for key in ("output_tokens", "thinking_tokens", "total_tokens"):
+        if key in result.usage:
+            row[key] = result.usage[key]
+    store.cost_append(row)
+
+
+def _post_at_current_location(identity, message_id, channel, topic, body, footer=""):
+    """Refetches the message's current channel/topic before posting, so a resolve or rename
+    between wake and reply lands the reply inside the moved topic instead of forking an
+    unresolved twin. handle_wake and handle_operator_tag shared this shape before extraction.
+    Returns (post_channel, post_topic) for callers that need the resolved location afterward."""
+    post_channel, post_topic = channel, topic
+    try:
+        cur = api.request(api.load(identity), "GET", "/api/v1/messages/%d" % message_id)
+        post_channel, post_topic = _location_from_refetch(cur, channel, topic)
+    except (Exception, SystemExit):
+        log.exception("current-location refetch failed for message %s; using wake-time lane", message_id)
+    send_mod.post(identity, post_channel, post_topic, body, footer=footer)
+    return post_channel, post_topic
+
+
+def is_tag_stale(msg_timestamp, now_ts, max_age_min):
+    """A tag older than TAG_MAX_AGE_MIN is skipped, never answered late (invariant). A missing
+    timestamp is treated as stale rather than risk answering something we cannot date."""
+    if msg_timestamp is None:
+        return True
+    return (now_ts - msg_timestamp) > max_age_min * 60
+
+
+# --- identity / Mate resolution ------------------------------------------------------------------
+
+def mate_user_id(identity=constants.OPERATOR_IDENTITY):
+    """Resolve Mate's user id once via GET /users under the given identity's auth (amendment 4).
+    His display name is resolved in the same call and cached alongside it for mate_mention()."""
+    if "id" not in _MATE_ID:
+        if not constants.AGENT_TEAM_MATE_EMAIL:
+            log.warning("AGENT_TEAM_MATE_EMAIL is empty; flags and operator-rail checks stay off")
+            _MATE_ID["id"] = None
+            _MATE_ID["mention"] = ""
+            return None
+        cfg = api.load(identity)
+        payload = api.request(cfg, "GET", "/api/v1/users")
+        uid = None
+        mention = ""
+        if payload.get("result") == "success":
+            for u in payload.get("members", []):
+                if u.get("email") == constants.AGENT_TEAM_MATE_EMAIL:
+                    uid = u.get("user_id")
+                    mention = "@**%s**" % u.get("full_name", "Mate")
+                    break
+        if uid is None:
+            log.error("could not resolve AGENT_TEAM_MATE_EMAIL=%s to a user id", constants.AGENT_TEAM_MATE_EMAIL)
+        _MATE_ID["id"] = uid
+        _MATE_ID["mention"] = mention
+    return _MATE_ID["id"]
+
+
+def mate_mention():
+    """Zulip mentions of Mate are @-mentions of his resolved display name (amendment 3: there is
+    no separate operator bot to tag him from)."""
+    mate_user_id()
+    return _MATE_ID.get("mention", "")
+
+
+# --- the delta record: only messages newer than the lane's stored anchor ------------------------
+
+def build_delta_record(as_name, channel, topic, since_id):
+    """Fetch topic messages newer than since_id (None on a lane's first wake => backfill up to the
+    window), capped at RECORD_WINDOW. Returns (record_text_or_None, new_anchor)."""
+    window = constants.RECORD_WINDOW
+    cfg = api.load(as_name)
+    sid = api.stream_id(as_name, channel)
+    if sid is None:
+        return None, since_id
+    narrow = [{"operator": "channel", "operand": sid}, {"operator": "topic", "operand": topic}]
+    if since_id:
+        params = {
+            "anchor": since_id, "num_before": 0, "num_after": window + 1,
+            "narrow": narrow, "apply_markdown": False, "include_anchor": False,
+        }
+    else:
+        params = {
+            "anchor": "newest", "num_before": window, "num_after": 0,
+            "narrow": narrow, "apply_markdown": False,
+        }
+    payload = api.request(cfg, "GET", "/api/v1/messages", params)
+    if payload.get("result") != "success":
+        return None, since_id
+    messages = payload.get("messages", [])
+    truncated = len(messages) > window
+    shown = messages[-window:] if not since_id else messages[:window]
+    if not shown:
+        return None, since_id
+    new_anchor = shown[-1]["id"]
+    text = read_mod.render(shown)
+    if truncated:
+        text += "\n" + prompts.RECORD_TRUNCATION_NOTE.format(shown=len(shown), available=len(messages))
+    return text, new_anchor
+
+
+# --- resolve lifecycle: an update_message event that resolves a topic drops its sessions --------
+
+def handle_topic_resolved(event):
+    """A topic edit that sets the new subject to a resolved name ends every persona's session on
+    that stream+topic (finding 1b): otherwise a resolved rename orphans the row instead of
+    dropping it. Reopening (ruling 7) never resurrects it; a later mention starts fresh."""
+    new_subject = event.get("subject")
+    stream_id = event.get("stream_id")
+    if new_subject is None or stream_id is None or not is_resolved_topic(new_subject):
+        return
+    normalized = store.normalize_topic(new_subject)
+    for persona in personas.PERSONAS:
+        store.session_drop(store.lane_key(stream_id, normalized, persona))
+    log.info("topic resolved stream_id=%s topic=%r; dropped sessions for %d personas",
+              stream_id, normalized, len(personas.PERSONAS))
+
+
+# --- the wake path ---------------------------------------------------------------------------
+
+def handle_wake(identity, event, mate_id):
+    msg = event.get("message") or {}
+    stream_id = msg.get("stream_id")
+    channel = msg.get("display_recipient")
+    topic = msg.get("subject", "")
+    sender_id = msg.get("sender_id")
+    content = msg.get("content", "")
+    message_id = msg.get("id")
+
+    lane = store.lane_key(stream_id, topic, identity)
+
+    if is_resolved_topic(topic):
+        store.session_drop(lane)
+        log.info("skip wake: lane %s topic is resolved", lane)
+        return
+
+    flags, body = parse_flags(content)
+    if flags:
+        if mate_id is not None and sender_id == mate_id:
+            pass  # applied below via flags_to_overrides
+        else:
+            log.info("flags %s from non-Mate sender %s ignored on lane %s", flags, sender_id, lane)
+            flags = []
+    model, effort = flags_to_overrides(flags)
+
+    try:
+        send_mod.react(identity, message_id, constants.EMOJI_RECEIPT)
+    except (Exception, SystemExit):
+        log.exception("react receipt failed for lane %s", lane)
+
+    # inflight is visible before the lane lock is even requested, so a waiter blocked on the lock
+    # can already see this wake (finding 2); cleared only after the lock is released. stream_id
+    # and topic ride along so the stall sweep can find this lane's loop without unparsing the key.
+    store.inflight_add(lane, {"persona": identity, "message_id": message_id, "stream_id": stream_id, "topic": topic})
+    try:
+        with store.lane_lock(lane):
+            row = store.session_get(lane) or {}
+            record_anchor = row.get("record_anchor")
+            provider = provider_for_wake(identity, flags, row)
+
+            def _set_provider(data, lane=lane, provider=provider):
+                if lane in data:
+                    data[lane]["provider"] = provider
+
+            store.mutate("inflight", _set_provider)
+            session_id = store.session_for_provider(row, provider)
+
+            try:
+                record, new_anchor = build_delta_record(identity, channel, topic, record_anchor)
+                run_cwd, worktree_notice = runner.wake_cwd(identity, stream_id, topic)
+                prompt = prompts.wake_prompt(body, record, worktree_notice)
+                run_model, run_effort, run_level = resolve_wake_settings(
+                    identity, provider, model, effort)
+                log.info("running %s lane=%s provider=%s model=%s effort=%s resume=%s",
+                         identity, lane, provider, run_model, run_effort, bool(session_id))
+                result = runner.run(identity, prompt, provider=provider, model=run_model,
+                                    effort=run_effort, session=session_id,
+                                    cwd=run_cwd, lane=lane)
+                # write-back lands immediately after a successful run, before any posting, so a
+                # failed post never loses it (finding 3a). Session stays keyed to the wake-time
+                # lane by design: a rename between kick and reply starts a new lane, not a migration.
+                store.session_set(lane, result.session_id,
+                                  new_anchor if new_anchor is not None else record_anchor,
+                                  result.provider)
+                _append_cost(identity, lane, result, run_model, run_level)
+                # a reply follows its topic; a rename between kick and reply must not fork the thread.
+                # the footer is stamped here from the runner's resolved values, never by the persona.
+                post_channel, post_topic = _post_at_current_location(
+                    identity, message_id, channel, topic,
+                    prompts.with_notice(result.reply, worktree_notice),
+                    prompts.wake_footer(result.provider, run_model, run_level, result.session_id))
+            except (Exception, SystemExit):
+                log.exception("wake failed for lane %s", lane)
+                # a failed wake leaves no resumable session: dropped before the note, so a post
+                # that fails cannot leave the next wake resuming a corpse.
+                store.session_drop(lane)
+                try:
+                    send_mod.post(identity, channel, topic, prompts.WAKE_FAILED_NOTE)
+                except (Exception, SystemExit):
+                    log.exception("failed to post the wake-failure note for lane %s", lane)
+            else:
+                # Rail A: only after the reply landed, and its own failures never read back as a
+                # failed wake (they are logged and swallowed inside handle_rail_a itself). Current
+                # topic goes to the loop lookup too, so a rename doesn't miss the loop.
+                try:
+                    handle_rail_a(stream_id, post_channel, post_topic, record, result.reply)
+                except (Exception, SystemExit):
+                    log.exception("rail A continuation check failed for lane %s", lane)
+    finally:
+        store.inflight_clear(lane)
+
+
+# --- Rail A: a finished persona wake continues its lane's open loop, if any ---------------------
+
+def handle_rail_a(stream_id, channel, topic, record, reply):
+    """After a persona's reply has landed, continue any open loop on this stream+topic: the
+    budget floor is checked against the ledger before the continuation is even spawned (invariant);
+    at budget the loop closes without a run. Otherwise the operator continuation decides kick or
+    close, and a reply that fails to parse leaves the loop untouched (never forge a kick)."""
+    loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+    if loop is None:
+        return
+    loop_id = loop["id"]
+    dest_channel = loop["current_channel"] or channel
+    dest_topic = loop["current_topic"] or topic
+
+    if loops.budget_reached(loop_id):
+        _close_loop(loop_id, dest_channel, dest_topic, prompts.LOOP_BUDGET_REASON.format(budget=loop["budget"]))
+        return
+
+    reply_text = reply or ""
+    if len(reply_text) > constants.REPLY_TRUNCATION_LIMIT:
+        reply_text = (reply_text[:constants.REPLY_TRUNCATION_LIMIT] +
+                      prompts.REPLY_TRUNCATION_NOTE.format(limit=constants.REPLY_TRUNCATION_LIMIT, total=len(reply_text)))
+
+    brief = prompts.OPERATOR_BRIEF.format(
+        header_id=loop["header_id"],
+        header_text=loop.get("header_text") or "",
+        n=loop["kicks"],
+        remaining=loop["budget"] - loop["kicks"],
+        budget=loop["budget"],
+        reply=reply_text,
+        state=prompts.state_block(store.state_summary()),
+        record=record or "",
+    )
+    # both operator rails spawn under the bridge identity, or the two grow separate memory trees.
+    result = runner.run("operator", brief, provider="claude", identity=constants.OPERATOR_IDENTITY)
+    _append_cost("operator", dest_topic, result)
+    decision = parse_operator_decision(result.reply)
+    if decision is None:
+        log.info("operator reply for loop %s did not parse to a decision; loop left untouched; reply was: %r",
+                 loop_id, (result.reply or "")[:300])
+        return
+
+    if decision[0] == "kick":
+        _, persona_name, body = decision
+        if persona_name not in personas.PERSONAS:
+            log.warning("operator kicked unknown persona %r for loop %s; skipped, never forged", persona_name, loop_id)
+            return
+        # ledger row written before the kick posts (invariant); check-and-append is atomic
+        # against a concurrent continuation on the same loop (finding 3).
+        n = loops.kick_record(loop_id, persona=persona_name)
+        if n is False:
+            _close_loop(loop_id, dest_channel, dest_topic, prompts.LOOP_BUDGET_REASON.format(budget=loop["budget"]))
+            return
+        # A kick must mention its persona or the wake never fires; same shape as loops.py's CLI kick.
+        kick_text = prompts.kick_body(prompts.MENTION.format(name=persona_name.capitalize(), body=body), n, loop["budget"])
+        try:
+            send_mod.post(constants.OPERATOR_IDENTITY, dest_channel, dest_topic, kick_text)
+        except (Exception, SystemExit):
+            log.exception("kick post failed for loop %s (ledger already advanced to %d/%d)", loop_id, n, loop["budget"])
+    elif decision[0] == "close":
+        _, reason = decision
+        _close_loop(loop_id, dest_channel, dest_topic, reason)
+
+
+# --- Rail B: Mate tags the operator bot directly -------------------------------------------------
+
+def handle_operator_tag(event, mate_id):
+    """A message event on the operator identity with the mentioned flag: proven Mate by user id,
+    within TAG_MAX_AGE_MIN of the message timestamp, or it is skipped and logged, never answered
+    late and never answered on a bot's say-so."""
+    msg = event.get("message") or {}
+    sender_id = msg.get("sender_id")
+    message_id = msg.get("id")
+    stream_id = msg.get("stream_id")
+    channel = msg.get("display_recipient")
+    topic = msg.get("subject", "")
+    content = msg.get("content", "")
+    ts = msg.get("timestamp")
+
+    if mate_id is None or sender_id != mate_id:
+        log.info(prompts.TAG_NOT_MATE.format(sender=sender_id))
+        return
+    if is_tag_stale(ts, time.time(), constants.TAG_MAX_AGE_MIN):
+        log.info(prompts.TAG_STALE.format(sender=sender_id, message_id=message_id, max_age=constants.TAG_MAX_AGE_MIN))
+        return
+    if is_resolved_topic(topic):
+        log.info("operator tag on resolved topic %r; skipped", topic)
+        return
+
+    # eyes means accepted and running, same as the wake path; a dropped tag gets none.
+    try:
+        send_mod.react(constants.OPERATOR_IDENTITY, message_id, constants.EMOJI_RECEIPT)
+    except (Exception, SystemExit):
+        log.exception("react receipt failed for operator tag %s", message_id)
+
+    loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+    loop_note = ""
+    if loop is not None:
+        loop_note = prompts.LOOP_NOTE.format(loop_id=loop["id"], n=loop["kicks"], budget=loop["budget"])
+
+    record, _ = build_delta_record(constants.OPERATOR_IDENTITY, channel, topic, None)
+    brief = prompts.OPERATOR_REPLY_BRIEF.format(message=content.strip(), record=record or "",
+                                                loop_note=loop_note,
+                                                state=prompts.state_block(store.state_summary()))
+    try:
+        # the seat runs as the operator-reply agent but posts as bridge (decision 1, plan of
+        # record): AGENT_TEAM_IDENTITY=bridge is what lets it call send.py --as bridge itself.
+        result = runner.run("operator-reply", brief, provider="claude",
+                            identity=constants.OPERATOR_IDENTITY)
+        _append_cost("operator-reply", topic, result)
+        # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
+        # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
+        # Rail B asks for no model or effort, so those two fields stamp as '-': the footer reports
+        # what the runner was told, and this rail tells it nothing.
+        _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, result.reply,
+                                   prompts.wake_footer(result.provider, None, None, result.session_id))
+    except (Exception, SystemExit):
+        log.exception("operator-reply run failed for tag message %s", message_id)
+
+
+# --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----
+
+def stall_sweep_once(now_ts=None):
+    """Pause first, then alert (finding 9): the alert text must never claim a pause that did not
+    happen, so whether a loop actually got paused decides which line goes out."""
+    now_ts = now_ts if now_ts is not None else time.time()
+    threshold = constants.STALL_MIN * 60
+    for lane, info in list(store.inflight_all().items()):
+        ts = info.get("ts")
+        if ts is None or info.get("alerted") or (now_ts - ts) <= threshold:
+            continue
+
+        stream_id = info.get("stream_id")
+        topic = info.get("topic")
+        paused = False
+        if stream_id is not None and topic is not None:
+            loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+            if loop is not None and loop.get("status") == loops.STATUS_OPEN:
+                loops.pause(loop["id"])
+                paused = True
+                log.info("paused loop %s: stall on lane %s", loop["id"], lane)
+
+        template = prompts.STALL_ALERT if paused else prompts.STALL_ALERT_NO_LOOP
+        try:
+            send_mod.post(constants.OPERATOR_IDENTITY, constants.STATUS_STREAM, constants.ALERTS_TOPIC,
+                           template.format(lane=lane, stall_min=constants.STALL_MIN))
+        except (Exception, SystemExit):
+            log.exception("failed to post stall alert for lane %s", lane)
+
+        def fn(data, lane=lane):
+            if lane in data:
+                data[lane]["alerted"] = True
+
+        store.mutate("inflight", fn)
+
+
+def stall_sweep_thread(interval=60):
+    while True:
+        try:
+            stall_sweep_once()
+        except (Exception, SystemExit):
+            log.exception("stall sweep pass failed")
+        time.sleep(interval)
+
+
+def operator_tag_worker(event, mate_id):
+    # Same SystemExit-safety as wake_worker: a thread callback must never die silently.
+    try:
+        handle_operator_tag(event, mate_id)
+    except (Exception, SystemExit):
+        log.exception("unhandled error handling operator tag on message %s", (event.get("message") or {}).get("id"))
+
+
+# --- catch-up: backfill mentions missed while the daemon was down --------------------------------
+
+def backfill(identity, mate_id, persona_emails):
+    """Covers personas and the operator identity: a queue re-registration gap can drop a Rail B
+    tag as silently as a persona wake, and handle_operator_tag's staleness guard makes replaying
+    an old tag here safe (it skips and logs rather than answering late)."""
+    last_id = store.seen_get(identity)
+    cfg = api.load(identity)
+    narrow = [{"operator": "is", "operand": "mentioned"}]
+    if last_id:
+        payload = api.request(cfg, "GET", "/api/v1/messages", {
+            "anchor": last_id, "num_before": 0, "num_after": 200,
+            "narrow": narrow, "apply_markdown": False, "include_anchor": False,
+        })
+    else:
+        payload = api.request(cfg, "GET", "/api/v1/messages", {
+            "anchor": "newest", "num_before": 0, "num_after": 0,
+            "narrow": narrow, "apply_markdown": False,
+        })
+    if payload.get("result") != "success":
+        log.error("backfill failed for %s: %s", identity, payload.get("msg", payload))
+        return
+    messages = payload.get("messages", [])
+    for msg in messages:
+        if identity in personas.PERSONAS and is_persona_sender(msg.get("sender_email"), persona_emails):
+            log.info("skip wake: persona sender mentioned %s on message %s", identity, msg.get("id"))
+            continue
+        fake_event = {"type": "message", "message": dict(msg, flags=list(set(msg.get("flags", [])) | {"mentioned"}))}
+        try:
+            if identity == constants.OPERATOR_IDENTITY:
+                handle_operator_tag(fake_event, mate_id)
+            else:
+                handle_wake(identity, fake_event, mate_id)
+        except (Exception, SystemExit):
+            log.exception("backfill wake failed for %s message %s", identity, msg.get("id"))
+    if messages:
+        store.seen_set(identity, messages[-1]["id"])
+
+
+# --- per-identity thread ---------------------------------------------------------------------
+
+def run_identity(identity, persona_emails):
+    import zulip
+
+    log.info("starting identity %s", identity)
+    me = api.me(identity)
+    mate_id = mate_user_id()
+
+    if identity in personas.PERSONAS or identity == constants.OPERATOR_IDENTITY:
+        try:
+            backfill(identity, mate_id, persona_emails)
+        except Exception:
+            log.exception("backfill crashed for %s", identity)
+
+    def wake_worker(msg_id, event, mate_id_for_wake):
+        # Never let SystemExit (send.py, api.py) escape a thread's callback and kill it silently;
+        # KeyboardInterrupt is not Exception or SystemExit, so it still propagates (finding 3b).
+        try:
+            handle_wake(identity, event, mate_id_for_wake)
+        except (Exception, SystemExit):
+            log.exception("unhandled error waking %s on message %s", identity, msg_id)
+
+    def cb(event):
+        if event.get("type") == "update_message":
+            try:
+                handle_topic_resolved(event)
+            except (Exception, SystemExit):
+                log.exception("update_message handling failed for identity %s", identity)
+            return
+        if event.get("type") != "message":
+            return
+        msg = event.get("message") or {}
+        if msg.get("sender_id") == me.get("user_id"):
+            return
+        if not is_mention(event):
+            return
+        if identity not in personas.PERSONAS:
+            if identity == constants.OPERATOR_IDENTITY:
+                # Advances the same seen-id ledger backfill() reads, so a later restart's
+                # anchor is this tag, not None (which would fetch nothing and re-open the gap).
+                store.seen_set(identity, msg.get("id"))
+                threading.Thread(
+                    target=operator_tag_worker,
+                    args=(event, mate_user_id()),
+                    name="railb-%s" % msg.get("id"),
+                    daemon=True,
+                ).start()
+            return
+        msg_id = msg.get("id")
+        store.seen_set(identity, msg_id)
+        if is_persona_sender(msg.get("sender_email"), persona_emails):
+            log.info("skip wake: persona sender mentioned %s on message %s", identity, msg_id)
+            return
+        # Each wake runs in its own thread; the lane lock (plus finding 2's ordering) already
+        # serializes same-lane wakes, so cross-lane wakes of one persona overlap instead of
+        # queuing behind each other (finding 4).
+        threading.Thread(
+            target=wake_worker,
+            args=(msg_id, event, mate_user_id()),
+            name="wake-%s-%s" % (identity, msg_id),
+            daemon=True,
+        ).start()
+
+    client = zulip.Client(config_file=str(constants.CONFIG_DIR / ("%s.zuliprc" % identity)))
+    client.call_on_each_event(
+        cb,
+        event_types=["message", "update_message"],
+        all_public_streams=True,
+        idle_queue_timeout=constants.IDLE_QUEUE_TIMEOUT,
+    )
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    log.info("agent-team listener starting: identities=%s", IDENTITIES)
+    persona_emails = frozenset(api.load(identity)["email"] for identity in personas.PERSONAS)
+    threading.Thread(target=stall_sweep_thread, name="stall-sweep", daemon=True).start()
+    threads = []
+    for identity in IDENTITIES:
+        t = threading.Thread(target=run_identity, args=(identity, persona_emails),
+                             name="listener-%s" % identity, daemon=True)
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join()
+
+
+def _selftest():
+    import tests.cases as cases
+
+    passed = failed = 0
+    for name in cases.LISTENER_LAZY_GLOBALS:
+        if name not in globals():
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL listener imported %s before runtime" % name)
+    for event, expected in cases.MENTIONS:
+        got = is_mention(event)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_mention(%r) -> %r wanted %r" % (event, got, expected))
+
+    for sender_email, persona_emails, expected in cases.PERSONA_SENDERS:
+        got = is_persona_sender(sender_email, persona_emails)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_persona_sender(%r, %r) -> %r wanted %r" %
+                  (sender_email, persona_emails, got, expected))
+
+    for topic, expected in cases.RESOLVED_TOPICS:
+        got = is_resolved_topic(topic)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_resolved_topic(%r) -> %r wanted %r" % (topic, got, expected))
+
+    for content, expected in cases.FLAG_PARSES:
+        got = parse_flags(content)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL parse_flags(%r) -> %r wanted %r" % (content, got, expected))
+
+    for identity, flags, row, matrix, expected in cases.PROVIDER_SELECTIONS:
+        got = provider_for_wake(identity, flags, row, matrix)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL provider_for_wake(%r, %r, %r) -> %r wanted %r" %
+                  (identity, flags, row, got, expected))
+
+    for identity, provider, model, effort, matrix, expected in cases.WAKE_SETTINGS:
+        try:
+            got = resolve_wake_settings(identity, provider, model, effort, matrix)
+        except RuntimeError as exc:
+            got = type(exc)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL resolve_wake_settings(%r, %r, %r, %r) -> %r wanted %r" %
+                  (identity, provider, model, effort, got, expected))
+
+    for payload, fallback_channel, fallback_topic, expected in cases.LOCATION_REFETCH:
+        got = _location_from_refetch(payload, fallback_channel, fallback_topic)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _location_from_refetch(%r, %r, %r) -> %r wanted %r" %
+                  (payload, fallback_channel, fallback_topic, got, expected))
+
+    for text, expected in cases.OPERATOR_DECISIONS:
+        got = parse_operator_decision(text)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL parse_operator_decision(%r) -> %r wanted %r" % (text, got, expected))
+
+    for msg_ts, now_ts, max_age, expected in cases.TAG_STALENESS:
+        got = is_tag_stale(msg_ts, now_ts, max_age)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_tag_stale(%r, %r, %r) -> %r wanted %r" % (msg_ts, now_ts, max_age, got, expected))
+
+    # Both rails driven for real with runner.run stubbed; the stub raises so no cost row is written.
+    class _Stop(Exception):
+        pass
+
+    spawns = []
+    reacts = []
+    briefs = []
+
+    def _stub_run(persona, prompt, **kw):
+        spawns.append((persona, kw.get("identity")))
+        briefs.append(prompt)
+        raise _Stop()
+
+    receipts = []
+    saved = (runner.run, loops.loop_for_lane, loops.budget_reached, build_delta_record, log.disabled,
+             send_mod.react)
+    try:
+        log.disabled = True
+        runner.run = _stub_run
+        send_mod.react = lambda *a: reacts.append(a)
+        loops.budget_reached = lambda *a, **k: False
+        loops.loop_for_lane = lambda *a, **k: {"id": 1, "current_channel": None, "current_topic": None,
+                                               "kicks": 0, "budget": 3, "header_id": 1, "header_text": ""}
+        globals()["build_delta_record"] = lambda *a, **k: ("", None)
+        try:
+            handle_rail_a(1, "c", "t", "record", "reply")
+        except _Stop:
+            pass
+        loops.loop_for_lane = lambda *a, **k: None
+        # the fresh row is also rail B's spawn case; the stale row must return before both.
+        for label, age_min, expected in cases.OPERATOR_TAG_RECEIPTS:
+            del reacts[:]
+            handle_operator_tag({"message": {"sender_id": 7, "id": 2, "stream_id": 1, "content": "go",
+                                             "display_recipient": "c", "subject": "t",
+                                             "timestamp": time.time() - age_min * 60}}, 7)
+            receipts.append((label, list(reacts), expected))
+    finally:
+        runner.run, loops.loop_for_lane, loops.budget_reached = saved[:3]
+        globals()["build_delta_record"] = saved[3]
+        log.disabled = saved[4]
+        send_mod.react = saved[5]
+
+    for label, got, expected in receipts:
+        want = [(constants.OPERATOR_IDENTITY, 2, constants.EMOJI_RECEIPT)] * expected
+        if got == want:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s receipt -> %r wanted %r" % (label, got, want))
+
+    for i, (label, persona, identity) in enumerate(cases.OPERATOR_SPAWNS):
+        got = spawns[i] if i < len(spawns) else None
+        if got == (persona, identity):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s spawn -> %r wanted %r" % (label, got, (persona, identity)))
+
+    for i, (label, substring) in enumerate(cases.OPERATOR_BRIEF_CONTAINS):
+        got = briefs[i] if i < len(briefs) else ""
+        if substring in got:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s brief carried no state block (%r)" % (label, substring))
+
+    # The wake-failure path driven for real, everything outward stubbed: the run raises, and the
+    # lane's dead session must be gone before any retry can resume it.
+    for lane, session, error, expected in cases.WAKE_SESSION_CLEARED_ON_FAILURE:
+        stream_id, topic, identity = lane.split(":")
+        store.session_set(lane, *session)
+        run_lanes = []
+
+        def _raise_run(*a, **k):
+            run_lanes.append(k.get("lane"))
+            raise error
+
+        saved_wake = (runner.run, runner.wake_cwd, send_mod.react, send_mod.post,
+                      build_delta_record, log.disabled)
+        try:
+            log.disabled = True
+            runner.run = _raise_run
+            runner.wake_cwd = lambda *a, **k: (None, "")
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            handle_wake(identity, {"message": {"stream_id": stream_id, "subject": topic,
+                                               "display_recipient": "c", "content": "go",
+                                               "sender_id": 7, "id": 3}}, None)
+        finally:
+            runner.run, runner.wake_cwd = saved_wake[0], saved_wake[1]
+            send_mod.react, send_mod.post = saved_wake[2], saved_wake[3]
+            globals()["build_delta_record"] = saved_wake[4]
+            log.disabled = saved_wake[5]
+        got = store.session_get(lane)
+        store.session_drop(lane)
+        if got == expected and run_lanes == [lane]:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL wake failure on lane %s left session %r, passed lanes %r wanted %r, [%r]" %
+                  (lane, got, run_lanes, expected, lane))
+
+    print("listener.py selftest: %d PASS, %d FAIL" % (passed, failed))
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+    if args.selftest:
+        sys.exit(_selftest())
+    main()

@@ -1,0 +1,9 @@
+{
+  "bob": {"provider": "claude", "model": "opus", "effort": "high"},
+  "archie": {"provider": "claude", "model": "opus", "effort": "high"},
+  "chella": {"provider": "claude", "model": "opus", "effort": "high"},
+  "eve": {"provider": "claude", "model": "sonnet", "effort": "high"},
+  "jan": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
+  "peter": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
+  "writer": {"provider": "claude", "model": "sonnet", "effort": "high"}
+}

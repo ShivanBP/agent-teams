@@ -1,5 +1,5 @@
 {
-  "planner": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
-  "builder": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
-  "reviewer": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"}
+  "chronos": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
+  "hermes": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
+  "quanyin": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"}
 }

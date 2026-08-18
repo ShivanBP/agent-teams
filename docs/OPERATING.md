@@ -1,6 +1,8 @@
 # Operating notes
 
 Working rules for the running fleet. Start at README.md for what this is.
+These are one estate's rules; adopters start from [OPERATING.example.md](OPERATING.example.md)
+and write their own as their fleet teaches them.
 
 ## Status rules
 

@@ -37,11 +37,7 @@ Remove unused starter rows.
 Create the live, gitignored config files and edit them:
 
 ```sh
-cp config/persona-matrix.example.json config/persona-matrix.json
-cp config/harness-defaults.example.json config/harness-defaults.json
-cp config/model-effort-defaults.example.json config/model-effort-defaults.json
-cp config/rails.example.json config/rails.json
-cp config/channels.example.json config/channels.json
+for f in config/*.example.json; do cp "$f" "${f%.example.json}.json"; done
 ```
 
 Each persona's matrix row selects its harness: `claude` runs Claude Code, `codex` runs Codex,
@@ -50,6 +46,10 @@ the live matrix.
 
 Optional browser tools start from `.mcp.example.json`; copy it to the gitignored `.mcp.json`
 and edit it for the local install.
+
+Replace `docs/OPERATING.md` with the skeleton in `docs/OPERATING.example.md`: the fork ships
+with the original estate's operating rules, which are an example, not yours. Or keep them and
+rewrite section by section as your fleet teaches you.
 
 ## Create the private overlay
 

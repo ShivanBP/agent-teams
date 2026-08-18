@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import prompts
 
 Z = "\u200b"
+HOME = Path.home()
+TEST_REPO = HOME / "Projects" / "agent-team"
+TEST_LOGS = HOME / ".config" / "agent-team" / "logs"
 
 # Imports absent until listener runtime, so its offline selftest needs no third-party package.
 LISTENER_LAZY_GLOBALS = ["zulip"]
@@ -68,21 +71,26 @@ TOPICS = [
 
 # (path, index, exists, is_dir, size, is_symlink, expected refusal key or None) for send.classify_attach
 ATTACHES = [
-    ("/Users/soto/Projects/agent-team/plans/p.md", 0, True, False, 1024, False, None),
-    ("/Users/soto/.config/agent-team/logs/day.log", 0, True, False, 1024, False, None),
-    ("/Users/soto/Desktop/notes.md", 0, True, False, 10, False, "outside_roots"),
+    (str(TEST_REPO / "plans" / "p.md"), 0, True, False, 1024, False, None),
+    (str(TEST_LOGS / "day.log"), 0, True, False, 1024, False, None),
+    (str(HOME / "Desktop" / "notes.md"), 0, True, False, 10, False, "outside_roots"),
     ("relative/path.md", 0, True, False, 10, False, "outside_roots"),
-    ("/Users/soto/Projects/../Desktop/x.md", 0, True, False, 10, False, "outside_roots"),
-    ("/Users/soto/Projects/agent-team/.env", 0, True, False, 10, False, "dot_name"),
-    ("/Users/soto/Projects/agent-team/plans", 0, True, True, 0, False, "directory"),
-    ("/Users/soto/Projects/agent-team/big.bin", 0, True, False, 10 * 1024 * 1024 + 1, False, "too_large"),
-    ("/Users/soto/Projects/agent-team/edge.bin", 0, True, False, 10 * 1024 * 1024, False, None),
-    ("/Users/soto/Projects/agent-team/gone.md", 0, False, False, 0, False, "missing"),
-    ("/Users/soto/Projects/agent-team/plans/p.md", 3, True, False, 10, False, None),
-    ("/Users/soto/Projects/agent-team/plans/p.md", 4, True, False, 10, False, "too_many"),
+    (str(HOME / "Projects" / ".." / "Desktop" / "x.md"),
+     0, True, False, 10, False, "outside_roots"),
+    (str(TEST_REPO / ".env"), 0, True, False, 10, False, "dot_name"),
+    (str(TEST_REPO / "plans"), 0, True, True, 0, False, "directory"),
+    (str(TEST_REPO / "big.bin"),
+     0, True, False, 10 * 1024 * 1024 + 1, False, "too_large"),
+    (str(TEST_REPO / "edge.bin"),
+     0, True, False, 10 * 1024 * 1024, False, None),
+    (str(TEST_REPO / "gone.md"), 0, False, False, 0, False, "missing"),
+    (str(TEST_REPO / "plans" / "p.md"), 3, True, False, 10, False, None),
+    (str(TEST_REPO / "plans" / "p.md"), 4, True, False, 10, False, "too_many"),
     # symlink refusal fires before dot-name/missing/directory checks, regardless of target
-    ("/Users/soto/Projects/agent-team/plans/.symlink-test", 0, True, False, 10, True, "symlink"),
-    ("/Users/soto/Projects/agent-team/plans/link-to-ssh", 0, False, False, 0, True, "symlink"),
+    (str(TEST_REPO / "plans" / ".symlink-test"),
+     0, True, False, 10, True, "symlink"),
+    (str(TEST_REPO / "plans" / "link-to-ssh"),
+     0, False, False, 0, True, "symlink"),
 ]
 
 # (body length, window, should refuse) for the window boundary
@@ -97,14 +105,14 @@ WINDOW = [
 # (body, expected body after extraction, expected accepted paths) for send._extract
 EXTRACTS = [
     ("plain body", "plain body", []),
-    ("before\n[attach: /Users/soto/Desktop/x.md]\nafter",
-     "before\n[attach refused: /Users/soto/Desktop/x.md is outside the allowed roots]\nafter",
+    (f"before\n[attach: {HOME / 'Desktop' / 'x.md'}]\nafter",
+     f"before\n[attach refused: {HOME / 'Desktop' / 'x.md'} is outside the allowed roots]\nafter",
      []),
-    ("[attach: /Users/soto/Projects/agent-team/.hidden]",
-     "[attach refused: /Users/soto/Projects/agent-team/.hidden is a dot-name file]",
+    (f"[attach: {TEST_REPO / '.hidden'}]",
+     f"[attach refused: {TEST_REPO / '.hidden'} is a dot-name file]",
      []),
-    ("[attach: /Users/soto/Projects/agent-team/nope.md]",
-     "[attach refused: /Users/soto/Projects/agent-team/nope.md does not exist]",
+    (f"[attach: {TEST_REPO / 'nope.md'}]",
+     f"[attach refused: {TEST_REPO / 'nope.md'} does not exist]",
      []),
 ]
 
@@ -240,7 +248,7 @@ AGY_RUNNER_CMDS = [
     (
         "gemini-3.7-flash", None, "high", "/tmp/probe", 1800,
         [
-            "/Users/soto/.local/bin/agy",
+            str(HOME / ".local" / "bin" / "agy"),
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/probe", "--model", "gemini-3.7-flash",
             "--effort", "high", "--output-format", "stream-json",
@@ -250,7 +258,7 @@ AGY_RUNNER_CMDS = [
     (
         "gemini-3.7-flash", "agy-session-1", "medium", "/tmp/resume", 90,
         [
-            "/Users/soto/.local/bin/agy",
+            str(HOME / ".local" / "bin" / "agy"),
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/resume", "--model", "gemini-3.7-flash",
             "--effort", "medium", "--output-format", "stream-json",
@@ -1048,7 +1056,8 @@ OPENCODE_RUNNER_CMDS = [
     (
         "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", None, "high", "/tmp/probe",
         [
-            "/Users/soto/.opencode/bin/opencode", "run", "--format", "json", "--auto",
+            str(HOME / ".opencode" / "bin" / "opencode"),
+            "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
             "--variant", "high", "--dir", "/tmp/probe", "hi",
         ],
@@ -1056,7 +1065,8 @@ OPENCODE_RUNNER_CMDS = [
     (
         "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "sid-oc-1", None, None,
         [
-            "/Users/soto/.opencode/bin/opencode", "run", "--format", "json", "--auto",
+            str(HOME / ".opencode" / "bin" / "opencode"),
+            "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
             "--session", "sid-oc-1", "hi",
         ],
@@ -1145,7 +1155,7 @@ AGY_PARSES = [
         '"response":"Verdict: PASS. All 6 probe targets survived contact under direct '
         'adversarial attacks and mutation testing across 8 mutation targets; 0 findings.",'
         '"error":"invalid tool call error (invalid_args) '
-        '/Users/soto/.eve-scratch/probe_status_board.py is not a valid artifact path; '
+        f'{HOME}/.eve-scratch/probe_status_board.py is not a valid artifact path; '
         'artifacts must be in brain/a51966c1-6ca2-4eae-b34b-feb16d797c47/"}}',
         None,
         (
@@ -1155,7 +1165,7 @@ AGY_PARSES = [
             {"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
              "input_tokens": 0},
             "invalid tool call error (invalid_args) "
-            "/Users/soto/.eve-scratch/probe_status_board.py is not a valid artifact path; "
+            f"{HOME}/.eve-scratch/probe_status_board.py is not a valid artifact path; "
             "artifacts must be in brain/a51966c1-6ca2-4eae-b34b-feb16d797c47/",
         ),
     ),

@@ -54,7 +54,8 @@ trigger is the first bad push.
 
 Personas can post, react, attach, and read, as themselves only (api.enforce_identity).
 Persona posts cannot wake other personas; bridge-issued kicks are the exception.
-Channel and topic management, resolving included, is Mate's job in the Zulip UI.
+Channel and topic management is Mate's job in the Zulip UI; the bridge's standing admin
+grant below is the one exception.
 
 Flag holders can select a provider (`-claude`, `-codex`, `-agy`, `-opencode`), a model
 (`-opus`, `-fable`), and an effort level (`-low`, `-mid`, `-high`, `-xtra`) for any wake.

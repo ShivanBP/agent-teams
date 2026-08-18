@@ -46,7 +46,7 @@ def _frontmatter(path):
 def _scan(directory):
     seen, errors = set(), []
     for path in sorted(directory.glob("*.md")):
-        if path.stem in ("operator", "operator-reply"):
+        if path.stem in ("operator", "bridge"):
             continue
         try:
             name = _frontmatter(path).get("name")

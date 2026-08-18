@@ -573,13 +573,13 @@ def handle_operator_tag(event, mate_id):
                                                 loop_note=loop_note, message_id=message_id,
                                                 state=prompts.state_block(store.state_summary()))
     try:
-        # the seat runs as the operator-reply agent but posts as bridge (decision 1, plan of
-        # record): AGENT_TEAM_IDENTITY=bridge is what lets it call send.py --as bridge itself.
-        rail = constants.rail_defaults("operator-reply")
-        result = runner.run("operator-reply", brief, provider=rail["provider"], model=rail["model"],
+        # agent name and identity are the same word now: AGENT_TEAM_IDENTITY=bridge is what
+        # lets the seat call send.py --as bridge itself.
+        rail = constants.rail_defaults("bridge")
+        result = runner.run("bridge", brief, provider=rail["provider"], model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
                             identity=constants.OPERATOR_IDENTITY)
-        _append_cost("operator-reply", topic, result, rail["model"], rail["effort"])
+        _append_cost("bridge", topic, result, rail["model"], rail["effort"])
         # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
         # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
         # The footer stamps what the runner was told, in the fleet's effort word, same as a wake's.
@@ -587,7 +587,7 @@ def handle_operator_tag(event, mate_id):
                                    prompts.wake_footer(result.provider, rail["model"], rail["effort"],
                                                        result.session_id, result.degraded))
     except (Exception, SystemExit) as exc:
-        log.exception("operator-reply run failed for tag message %s", message_id)
+        log.exception("bridge seat run failed for tag message %s", message_id)
         _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, exc, channel, topic, message_id)
 
 
@@ -823,7 +823,7 @@ def run_identity(identity, persona_emails):
 def check_rails(lookup=constants.rail_defaults):
     """Resolves both rail rows once at boot, so a rails.json missing a key, missing a field, or
     naming an effort its provider has no scale for stops restart.sh instead of a live wake."""
-    for rail in ("operator", "operator-reply"):
+    for rail in ("operator", "bridge"):
         try:
             row = lookup(rail)
             constants.translate_effort(row["provider"], row["effort"])

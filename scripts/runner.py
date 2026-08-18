@@ -324,8 +324,8 @@ def _run_prompt(provider, persona, prompt, session, identity):
 
 def _wake_identity(persona, identity):
     """AGENT_TEAM_IDENTITY for the subprocess: identity is send.py's --as match, not always the
-    --agent name (the operator-reply seat runs as the operator-reply agent but posts as bridge,
-    its seat's whole send.py surface). Falls back to persona when no identity is given."""
+    --agent name (Rail A runs as the operator agent but posts as bridge, its seat's whole
+    send.py surface). Falls back to persona when no identity is given."""
     return identity or persona
 
 
@@ -637,7 +637,7 @@ def main():
     ap.add_argument("--effort")
     ap.add_argument("--resume")
     # without this a hand-run operator seat falls back to the persona name and reads
-    # memory/operator-reply/, which does not exist; both listener rails pass identity=bridge.
+    # memory/operator/, which does not exist; both listener rails pass identity=bridge.
     ap.add_argument("--identity")
     ap.add_argument("prompt", nargs="?")
     args = ap.parse_args()

@@ -14,7 +14,9 @@ Mate's, always. Never print or log a zuliprc's contents. A wake does not grant i
 capabilities.
 
 Personal content lives only in `memory/`, `plans/`, `agents/`, and gitignored config.
-Machinery stays generic. No user-specific absolute home paths outside home-derived defaults.
+Machinery runs unmodified in any estate: persona names, channel names, models, and absolute
+paths live in the config JSONs, never in `scripts/`; a change that needs an estate value in a
+shared file moves the value to config first.
 
 Persona memory lives only under `memory/<persona>/` by absolute path; write durable judgment
 only and fetch current state fresh.
@@ -30,8 +32,8 @@ atomic; the operator continuation answers with one KICK or CLOSE line and anythi
 else is discarded unread.
 
 Every string the machinery posts or injects lives in scripts/prompts.py; tunables in
-scripts/constants.py. Persona, harness, model-effort and operator-rail defaults live in the
-four JSON files under config/, rails.json holding both rails; copy each tracked `.example.json`
+scripts/constants.py. Persona, harness, model-effort, operator-rail and channel defaults live
+in the JSON files under config/, rails.json holding both rails; copy each tracked `.example.json`
 to its gitignored live name on first setup.
 Every effort in those files uses low/mid/high/xtra. A posted string literal anywhere else is
 a bug. Every module carries --selftest, offline; bodies live in `scripts/tests/`; a test body
@@ -51,7 +53,11 @@ you, with the reason in the briefing as one line. Never spawn a subagent on fabl
 
 scripts/restart.sh is the only restart path: a bare kickstart can kill a wake mid-run.
 
-Shared-checkout git mutations run only through `python3 scripts/commit.py -m "message"
+Main takes no direct pushes, Mate included: every public change lands through a PR that merges
+itself on green. Personal content in the private repo is the exception; commit.py pushes it
+directly, and commit.py refuses a public path.
+
+Private-repo git mutations run only through `python3 scripts/commit.py -m "message"
 <path>...`: name every path, never use `git stash`, and never substitute raw git if its bounded
 lock wait fails. Report named files left written but uncommitted. Read-only git and worktree git
 stay outside this ritual.
@@ -61,11 +67,13 @@ handoff fetches origin and rebases onto `origin/main` before the wake reads the 
 handoff rebase is aborted and the stale worktree is handed over with its behind-count, never a
 fallback to the shared checkout. Before it lands, every module it touched has a green `--selftest`
 in that same wake. It lands itself: `git fetch origin`, `git rebase origin/main`, re-run those
-selftests, `git push origin HEAD:main`, then run `python3 scripts/commit.py --pull` and report
-the sha. A rebase conflict or a
-red selftest stops the wake: it reports the branch, unlanded, and names what stopped it. Jan and Eve
-read the landed sha and join that worktree when it already exists; a finding becomes a follow-up
-commit, never a held branch. Findings stay in the topic.
+selftests, push the branch, then `gh pr create`, `gh pr merge --auto --rebase`,
+`gh pr checks --watch`, and `gh pr view --json mergeCommit` for the merged sha; then run
+`python3 scripts/commit.py --pull` and report that sha. The wake waits for the merge: it never
+closes on an open PR. A rebase conflict, a red check or a red selftest stops the wake: it
+reports the branch and the PR, unlanded, and names what stopped it. Jan and Eve read the landed
+sha and join that worktree when it already exists; a finding becomes a follow-up PR from the
+same worktree, never a held branch. Findings stay in the topic.
 
 ## Taste
 

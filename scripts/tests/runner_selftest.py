@@ -443,7 +443,7 @@ def _body():
                       (provider, model, effort, fragment))
 
     for identity, exists, expected in cases.WORKTREE_ROUTES:
-        got = wants_worktree(identity, exists)
+        got = wants_worktree(identity, exists, cases.WORKTREE_BUILD, cases.WORKTREE_JOIN)
         if got == expected:
             passed += 1
         else:

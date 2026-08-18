@@ -1,0 +1,4 @@
+{
+  "Workshop": ["setup", "maintenance", "scheduled-jobs", "status"],
+  "Domains": ["foundry", "job-search", "money"]
+}

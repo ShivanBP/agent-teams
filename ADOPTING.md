@@ -34,12 +34,14 @@ Rename and rewrite the chosen personas. Keep each filename, its frontmatter `nam
 `PERSONAS` tuple in `scripts/personas.py`, and the persona matrix keys identical. Remove
 unused starter rows.
 
-Create the three live, gitignored config files and edit them:
+Create the live, gitignored config files and edit them:
 
 ```sh
 cp config/persona-matrix.example.json config/persona-matrix.json
 cp config/harness-defaults.example.json config/harness-defaults.json
 cp config/model-effort-defaults.example.json config/model-effort-defaults.json
+cp config/rails.example.json config/rails.json
+cp config/channels.example.json config/channels.json
 ```
 
 Each persona's matrix row selects its harness: `claude` runs Claude Code, `codex` runs Codex,

@@ -28,8 +28,9 @@ WILDCARDS = [
     ("", ""),
 ]
 
-# (sender, input, expected) for send.strip_persona_mentions. The roster comes from the matrix, so
-# the rows name bob, the one persona both the live and the example matrix carry.
+# (sender, input, expected) for send.strip_persona_mentions, driven with these mention names so
+# the rows read the same in any estate: a roster name and a display name the matrix spells out.
+PERSONA_MENTION_NAMES = ("bob", "Ma'at")
 PERSONA_MENTIONS = [
     ("bob", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
     ("bob", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
@@ -347,14 +348,31 @@ JSONL_BACKGROUND = (
     1.5,
 )
 
-# (identity, worktree exists, expected) for runner.wants_worktree
+# (matrix, role, expected personas) for constants.worktree_roles: the matrix says who builds
+# and who joins, so no roster lives in constants.py.
+WORKTREE_ROLE_MATRIX = {
+    "one": {"worktree": "build"},
+    "two": {},
+    "three": {"worktree": "join"},
+    "four": {"worktree": "build"},
+    "five": "not a row",
+}
+WORKTREE_ROLES = [
+    ("build", ("one", "four")),
+    ("join", ("three",)),
+    ("neither", ()),
+]
+
+# (identity, worktree exists, expected) for runner.wants_worktree, driven with these role
+# tuples rather than the live matrix so the fixture reads the same in any estate.
+WORKTREE_BUILD = ("one", "four")
+WORKTREE_JOIN = ("three",)
 WORKTREE_ROUTES = [
-    ("bob", False, True),
-    ("peter", False, True),
-    ("jan", False, False),
-    ("jan", True, True),
-    ("eve", True, True),
-    ("archie", True, False),
+    ("one", False, True),
+    ("four", False, True),
+    ("three", False, False),
+    ("three", True, True),
+    ("two", True, False),
 ]
 
 # (starting state of one link, expected end state) for runner._ensure_links, which runs on every
@@ -375,8 +393,10 @@ COMMIT_REFUSALS = [
     (["-m", "message", "../outside.txt"], "outside"),
 ]
 
-# (scenario, expected truth) for commit_selftest's repository and lock probes.
+# (scenario, expected truth) for commit_selftest's repository and lock probes. The public route
+# retired with branch protection, so every commit fixture names a personal path.
 COMMIT_SCENARIOS = [
+    ("public path names the PR route", True),
     ("clean push", True),
     ("rejected push rebases and pushes", True),
     ("rebase conflict aborts and names sha", True),
@@ -432,10 +452,30 @@ PERSONA_FIXTURES = [
     set(), 1),
 ]
 
+# (label, source, expected needles) for the estate tripwire, run against ESTATE_NAMES. Comments
+# and docstrings are exempt: attribution lines are a habit worth keeping.
+ESTATE_NAMES = {"bob", "Ma'at"}
+ESTATE_FIXTURES = [
+    ("clean source", 'name = row["name"]\n', []),
+    ("attribution comment", "# the rule Bob taught, 2026-08-18\nx = 1\n", []),
+    ("module docstring", '"""Bob owns this organ."""\nx = 1\n', []),
+    ("function docstring", 'def f():\n    """Ask Bob."""\n    return 1\n', []),
+    ("name in a literal", 'x = "bob"\n', ["bob"]),
+    ("names in a tuple", 'x = ("bob", "Ma\'at")\n', ["Ma'at", "bob"]),
+    ("name as an identifier", "bob = 1\n", ["bob"]),
+    ("case folds", 'x = "Bob"\n', ["bob"]),
+    ("substring is not a word", 'x = "bobbin"\n', []),
+    ("home path", 'x = "/Users/someone/Projects"\n', ["/Users/"]),
+    ("other home path", 'x = "/home/someone"\n', ["/home/"]),
+]
+
 # personas.load_personas keeps matrix key order. The example matrix is the fallback roster and the
 # only one a clone has, so the selftest reads it by path and never the gitignored live matrix.
 PERSONA_EXAMPLE_ROSTER = ("thoth", "bob", "maat")
 
+# (name, expected) for personas.display_name under PERSONA_DISPLAY_MAP: only a name capitalize
+# gets wrong earns a matrix row, everything else capitalizes.
+PERSONA_DISPLAY_MAP = {"maat": "Ma'at"}
 PERSONA_DISPLAY_NAMES = [
     ("thoth", "Thoth"),
     ("bob", "Bob"),
@@ -1436,7 +1476,10 @@ MATE_EMAIL_SETS = [
     (None, "", frozenset()),
 ]
 
-BOARD_CHANNELS = {
-    "setup", "maintenance", "scheduled-jobs", "status",
-    "foundry", "job-search", "money", "outer-realms", "peter's",
-}
+# (channels config, expected groups) for constants.board_groups, which keeps config order;
+# board_channels flattens the same rows.
+CHANNEL_GROUPS = [
+    ({"Workshop": ["one"], "Domains": ["two", "three"]},
+     (("Workshop", ("one",)), ("Domains", ("two", "three")))),
+    ({}, ()),
+]

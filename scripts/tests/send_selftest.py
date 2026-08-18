@@ -27,7 +27,7 @@ def _body():
             failed += 1
             print("FAIL strip_wildcards(%r) -> %r, wanted %r" % (text, got, expected))
     for as_name, text, expected in cases.PERSONA_MENTIONS:
-        got = strip_persona_mentions(text, as_name)
+        got = strip_persona_mentions(text, as_name, cases.PERSONA_MENTION_NAMES)
         if got == expected:
             passed += 1
         else:

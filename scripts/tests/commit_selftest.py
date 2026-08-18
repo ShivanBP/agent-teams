@@ -71,14 +71,15 @@ def run(commit_mod):
             raw(root, "init", "--bare", str(remote)); raw(root, "init", str(repo))
             raw(repo, "config", "user.email", "selftest@example.com")
             raw(repo, "config", "user.name", "Selftest")
-            (repo / "memory").mkdir()
+            (repo / "memory").mkdir(); (repo / "plans").mkdir()
             write(repo, ".gitattributes",
                   (Path(__file__).resolve().parents[2] / ".gitattributes").read_text())
             write(repo, "base.txt", "base\n")
             write(repo, "memory/concurrent.md", "base\n")
             write(repo, "memory/same-line.md", "original\n")
             write(repo, "memory/deletion.md", "first\nremove\nlast\n")
-            raw(repo, "add", "--", ".gitattributes", "base.txt", "memory")
+            write(repo, "plans/base.md", "base\n")
+            raw(repo, "add", "--", ".gitattributes", "base.txt", "memory", "plans")
             raw(repo, "commit", "-m", "base"); raw(repo, "branch", "-M", "main")
             raw(repo, "remote", "add", "origin", str(remote)); raw(repo, "push", "-u", "origin", "main")
             raw(remote, "symbolic-ref", "HEAD", "refs/heads/main")
@@ -89,19 +90,29 @@ def run(commit_mod):
                 check(code == 2 and needle in err and clean_stash(repo),
                       "refusal %r" % argv, err.strip())
 
-            write(repo, "clean.txt", "clean\n"); code, out, _ = invoke(["-m", "clean", "clean.txt"])
+            write(repo, "public.txt", "public\n")
+            public_head = raw(repo, "rev-parse", "HEAD").stdout.strip()
+            code, _, err = invoke(["-m", "public", "public.txt"])
+            results["public path names the PR route"] = (
+                code == 1 and "worktree PR" in err and clean_stash(repo)
+                and public_head == raw(repo, "rev-parse", "HEAD").stdout.strip())
+
+            write(repo, "plans/clean.md", "clean\n")
+            code, out, _ = invoke(["-m", "clean", "plans/clean.md"])
             results["clean push"] = code == 0 and "pushed " in out and clean_stash(repo)
 
             other = root / "other"; raw(root, "clone", str(remote), str(other))
             raw(other, "config", "user.email", "other@example.com"); raw(other, "config", "user.name", "Other")
             write(other, "remote.txt", "remote\n"); raw(other, "add", "--", "remote.txt")
             raw(other, "commit", "-m", "remote"); raw(other, "push")
-            write(repo, "local.txt", "local\n"); code, _, _ = invoke(["-m", "local", "local.txt"])
+            write(repo, "plans/local.md", "local\n"); code, _, _ = invoke(["-m", "local", "plans/local.md"])
             results["rejected push rebases and pushes"] = code == 0 and (repo / "remote.txt").is_file() and clean_stash(repo)
 
-            raw(other, "pull", "--ff-only"); write(other, "conflict.txt", "remote\n")
-            raw(other, "add", "--", "conflict.txt"); raw(other, "commit", "-m", "remote conflict"); raw(other, "push")
-            write(repo, "conflict.txt", "local\n"); code, _, err = invoke(["-m", "local conflict", "conflict.txt"])
+            raw(other, "pull", "--ff-only"); write(other, "plans/conflict.md", "remote\n")
+            raw(other, "add", "--", "plans/conflict.md")
+            raw(other, "commit", "-m", "remote conflict"); raw(other, "push")
+            write(repo, "plans/conflict.md", "local\n")
+            code, _, err = invoke(["-m", "local conflict", "plans/conflict.md"])
             sha = raw(repo, "rev-parse", "HEAD").stdout.strip()
             results["rebase conflict aborts and names sha"] = code == 1 and sha in err and not (repo / ".git/rebase-merge").exists() and clean_stash(repo)
 
@@ -109,8 +120,8 @@ def run(commit_mod):
             raw(dirty, "config", "user.email", "dirty@example.com"); raw(dirty, "config", "user.name", "Dirty")
             write(dirty, "base.txt", "dirty\n"); write(other, "dirty-remote.txt", "remote\n")
             raw(other, "add", "--", "dirty-remote.txt"); raw(other, "commit", "-m", "move remote"); raw(other, "push")
-            write(dirty, "dirty-local.txt", "local\n"); commit_mod.REPO_DIR = dirty
-            code, _, err = invoke(["-m", "dirty local", "dirty-local.txt"])
+            write(dirty, "plans/dirty-local.md", "local\n"); commit_mod.REPO_DIR = dirty
+            code, _, err = invoke(["-m", "dirty local", "plans/dirty-local.md"])
             sha = raw(dirty, "rev-parse", "HEAD").stdout.strip()
             results["dirty tree refusal skips abort"] = (
                 code == 1 and err == "committed %s, unpushed, dirty tree blocked rebase\n" % sha
@@ -146,9 +157,10 @@ def run(commit_mod):
 
             serial = root / "serial"; raw(root, "clone", str(remote), str(serial))
             raw(serial, "config", "user.email", "serial@example.com"); raw(serial, "config", "user.name", "Serial")
-            write(serial, "one.txt", "one\n"); write(serial, "two.txt", "two\n")
+            write(serial, "plans/one.md", "one\n"); write(serial, "plans/two.md", "two\n")
             with store._locked("git"):
-                ps = [subprocess.Popen([sys.executable, "-c", child, str(serial), str(state), "-m", name, name + ".txt"],
+                ps = [subprocess.Popen([sys.executable, "-c", child, str(serial), str(state), "-m", name,
+                                        "plans/" + name + ".md"],
                                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                       for name in ("one", "two")]
                 time.sleep(0.1)
@@ -216,12 +228,12 @@ def run(commit_mod):
             raw(absolute, "config", "user.name", "Absolute")
             alias = root / "absolute-link"
             alias.symlink_to(absolute, target_is_directory=True)
-            write(absolute, "absolute.txt", "absolute\n")
+            write(absolute, "plans/absolute.md", "absolute\n")
             commit_mod.REPO_DIR = absolute
-            code, _, _ = invoke(["-m", "absolute path", str(alias / "absolute.txt")])
+            code, _, _ = invoke(["-m", "absolute path", str(alias / "plans/absolute.md")])
             results["absolute symlink path commits"] = (
-                code == 0 and raw(absolute, "ls-files", "--", "absolute.txt").stdout.strip()
-                == "absolute.txt" and clean_stash(absolute))
+                code == 0 and raw(absolute, "ls-files", "--", "plans/absolute.md").stdout.strip()
+                == "plans/absolute.md" and clean_stash(absolute))
 
             nested = root / "nested"; raw(root, "init", str(nested))
             raw(nested, "config", "user.email", "public@example.com")

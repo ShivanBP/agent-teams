@@ -9,6 +9,8 @@ import constants, store
 REPO_DIR = constants.REPO_DIR
 PERSONAL_DIRS = {"memory", "plans", "agents"}
 PRIVATE_DIR = ".private"
+PUBLIC_ROUTE = ("public paths land through a worktree PR, not commit.py: "
+                "push the branch and merge it on green")
 
 
 class RitualError(RuntimeError): pass
@@ -61,7 +63,7 @@ def _repo_for(paths):
     if any(personal) and not all(personal):
         raise RitualError("paths span public and private repositories")
     if not any(personal):
-        return root
+        raise RitualError(PUBLIC_ROUTE)
     private = root / PRIVATE_DIR
     if (private / ".git").is_dir():
         proc = _need(_git("rev-parse", "--show-toplevel", repo=private),
@@ -82,10 +84,7 @@ def _route(paths):
 
 def _commit(message, paths):
     repo, paths = _route(paths)
-    add = ["add"]
-    if Path(paths[0]).parts[0] in PERSONAL_DIRS:
-        add.append("-f")
-    _need(_git(*add, "--", *paths, repo=repo), ("add",))
+    _need(_git("add", "-f", "--", *paths, repo=repo), ("add",))
     _need(_git("commit", "-m", message, repo=repo), ("commit",))
     sha = _need(_git("rev-parse", "HEAD", repo=repo),
                 ("rev-parse", "HEAD")).stdout.strip()

@@ -614,7 +614,9 @@ def run(persona, prompt, *, provider, model=None, effort=None, session=None, cwd
             wake_log=_wake_log_path(lane) if lane is not None else None)
     if provider == "opencode":
         return _run_opencode(
-            persona, prompt, model=model, effort=effort, session=session, cwd=cwd,
+            persona, prompt, model=model or constants.OPENCODE_MODEL,
+            effort=effort or constants.translate_effort("opencode", constants.OPENCODE_VARIANT),
+            session=session, cwd=cwd,
             timeout=timeout, identity=identity,
             wake_log=_wake_log_path(lane) if lane is not None else None)
     raise RuntimeError("unknown provider %r" % provider)

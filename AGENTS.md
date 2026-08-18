@@ -22,7 +22,7 @@ only and fetch current state fresh.
 Wakes: a mention wakes a persona; the record it sees is a delta since its lane's last wake;
 a topic is an open session, resolving it ends the session, reopening starts fresh; status
 topics are the exception, they are never resolved. The flags -opus -fable -sonnet -low -mid -high
--xtra -claude -codex -agy -opencode parse only off Mate's own user id.
+-xtra -claude -codex -agy -opencode parse only off configured flag holders.
 
 Loops: header before kick one; `loops.py kick` fires kick one so the ledger row lands
 before the post; every kick ends "kick n/N" and mentions its persona; the budget floor is
@@ -33,8 +33,8 @@ Every string the machinery posts or injects lives in scripts/prompts.py; tunable
 scripts/constants.py. Persona, harness, and model-effort defaults live in the three JSON files
 under config/; copy each tracked `.example.json` to its gitignored live name on first setup.
 Every effort in those files uses low/mid/high/xtra. A posted string literal anywhere else is
-a bug. Every module carries --selftest, offline; a case table changes in the same commit as
-its organ.
+a bug. Every module carries --selftest, offline; bodies live in `scripts/tests/`; a case table
+changes in the same commit as its organ.
 
 Fleet skills live in `skills/`, one directory each with a `SKILL.md`; personas live in
 `agents/`. Harnesses discover them through symlinks, never edited: `.claude/agents` and

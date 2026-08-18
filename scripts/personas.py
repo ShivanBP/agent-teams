@@ -6,8 +6,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
-
 PERSONAS = ("archie", "bob", "chella", "eve", "jan", "peter", "writer")
 
 def _frontmatter(path):

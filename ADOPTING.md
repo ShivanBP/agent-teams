@@ -107,7 +107,7 @@ persona in a topic. Adoption is complete when that persona wakes, works, and rep
 
 Cutover is a desktop operation after the export gate passes. Back up the old root, clone the
 public repository into a new folder, and copy only these private surfaces from the old root:
-`memory/`, `plans/`, `agents/`, `.mcp.json`, and the three live `config/*.json` files. Run the
+`memory/`, `plans/`, `agents/`, `.mcp.json`, and the live `config/*.json` files. Run the
 private-overlay bootstrap above with the archived private repository as its remote. Its
 existing `main` remains the old estate history; new personal commits use `private-overlay`.
 

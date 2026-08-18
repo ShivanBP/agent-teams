@@ -1,7 +1,7 @@
 # Agent-team (Zulip persona fleet)
 
-The Zulip fleet: seven personas plus the bridge identity, woken by @-mentions through
-scripts/listener.py. Plan of record: plans/2026-08-12-zulip-migration-final.md. The Discord
+The Zulip fleet: the personas in the persona matrix plus the bridge identity, woken by @-mentions
+through scripts/listener.py. Plan of record: plans/2026-08-12-zulip-migration-final.md. The Discord
 predecessor a-team was retired and deleted 2026-08-16; its history lives at soto-mate/a-team.
 
 Zulip working rules and the permissions ledger live in README.md.

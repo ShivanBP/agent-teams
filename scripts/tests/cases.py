@@ -30,11 +30,11 @@ WILDCARDS = [
 
 # (sender, input, expected) for send.strip_persona_mentions
 PERSONA_MENTIONS = [
-    ("archie", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
-    ("archie", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
-    ("bridge", "kick @**archie** build", "kick @**archie** build"),
-    ("archie", "alert @**Soto**", "alert @**Soto**"),
-    ("archie", "@**all** hands", "@**all** hands"),
+    ("planner", "ask @**builder** to check", "ask @" + Z + "**builder** to check"),
+    ("planner", "@**Builder|123** here", "@" + Z + "**Builder|123** here"),
+    ("bridge", "kick @**planner** build", "kick @**planner** build"),
+    ("planner", "alert @**Soto**", "alert @**Soto**"),
+    ("planner", "@**all** hands", "@**all** hands"),
 ]
 
 # (params, expected form encoding) for api._encode
@@ -510,7 +510,8 @@ STATE_SUMMARIES = [
 # (lane, stored session args, error the run raises, expected session_get afterwards) for the
 # wake-failure path. One row: the drop is independent of provider, persona and error type.
 WAKE_SESSION_CLEARED_ON_FAILURE = [
-    ("selftest:wake failure:jan", ("sid-dead", 42, "claude"), RuntimeError("boom"), None),
+    ("selftest:wake failure:reviewer",
+     ("sid-dead", 42, "claude"), RuntimeError("boom"), None),
 ]
 
 # (event dict, expected is_mention) for listener.is_mention
@@ -585,41 +586,38 @@ FLAG_HOLDER_WAKES = [
 
 # (identity, flags, session row, matrix, expected provider) for listener.provider_for_wake
 TEST_MATRIX = {
-    "archie": {"provider": "claude", "model": "opus", "effort": "high"},
-    "bob": {"provider": "claude", "model": "opus", "effort": "high"},
-    "eve": {"provider": "claude", "model": "sonnet", "effort": "high"},
-    "jan": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
-    "peter": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
+    "planner": {"provider": "claude", "model": "opus", "effort": "high"},
+    "builder": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
+    "reviewer": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
 }
 
 PROVIDER_SELECTIONS = [
-    ("bob", ["-codex"], {}, TEST_MATRIX, "codex"),
-    ("bob", ["-claude"], {"provider": "codex", "session_id": "c"}, TEST_MATRIX, "claude"),
-    ("bob", [], {"provider": "codex", "session_id": "c"}, TEST_MATRIX, "codex"),
-    ("bob", [], {"session_id": "legacy"}, TEST_MATRIX, "claude"),
-    ("eve", ["-codex"], {}, TEST_MATRIX, "codex"),
-    ("eve", ["-agy"], {}, TEST_MATRIX, "agy"),
-    ("jan", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
-    ("jan", [], {}, TEST_MATRIX, "opencode"),
-    ("jan", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
-    ("jan", ["-opencode"], {}, TEST_MATRIX, "opencode"),
-    ("peter", [], {}, TEST_MATRIX, "agy"),
-    ("peter", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
-    ("archie", [], {}, TEST_MATRIX, "claude"),
+    ("builder", ["-codex"], {}, TEST_MATRIX, "codex"),
+    ("builder", ["-claude"], {"provider": "codex", "session_id": "c"},
+     TEST_MATRIX, "claude"),
+    ("builder", [], {"provider": "codex", "session_id": "c"}, TEST_MATRIX, "codex"),
+    ("builder", [], {"session_id": "legacy"}, TEST_MATRIX, "claude"),
+    ("planner", ["-codex"], {}, TEST_MATRIX, "codex"),
+    ("planner", ["-agy"], {}, TEST_MATRIX, "agy"),
+    ("reviewer", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
+    ("reviewer", [], {}, TEST_MATRIX, "opencode"),
+    ("reviewer", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
+    ("reviewer", ["-opencode"], {}, TEST_MATRIX, "opencode"),
+    ("planner", [], {}, TEST_MATRIX, "claude"),
 ]
 
 # (identity, provider, model flag, effort flag, matrix, expected settings or exception)
 WAKE_SETTINGS = [
-    ("bob", "claude", None, None, TEST_MATRIX, ("opus", "high", "high")),
-    ("bob", "claude", "fable", None, TEST_MATRIX, ("fable", "medium", "mid")),
-    ("bob", "claude", "sonnet", None, TEST_MATRIX, ("sonnet", "high", "high")),
-    ("bob", "claude", "opus", None, TEST_MATRIX, ("opus", "high", "high")),
-    ("bob", "codex", None, None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
-    ("bob", "codex", "opus", None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
-    ("bob", "codex", None, "low", TEST_MATRIX, ("gpt-5.6-sol", "low", "low")),
-    ("jan", "opencode", None, None, TEST_MATRIX,
+    ("planner", "claude", None, None, TEST_MATRIX, ("opus", "high", "high")),
+    ("planner", "claude", "fable", None, TEST_MATRIX, ("fable", "medium", "mid")),
+    ("planner", "claude", "sonnet", None, TEST_MATRIX, ("sonnet", "high", "high")),
+    ("planner", "claude", "opus", None, TEST_MATRIX, ("opus", "high", "high")),
+    ("builder", "codex", None, None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
+    ("builder", "codex", "opus", None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
+    ("builder", "codex", None, "low", TEST_MATRIX, ("gpt-5.6-sol", "low", "low")),
+    ("reviewer", "opencode", None, None, TEST_MATRIX,
      ("fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "high", "high")),
-    ("jan", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
+    ("reviewer", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
 ]
 
 EFFORT_TRANSLATIONS = [
@@ -642,63 +640,54 @@ EFFORT_TRANSLATIONS = [
 ]
 
 MONITOR_INPUT = {
-    "inflight": {"lane": {"persona": "jan", "provider": "codex", "topic": "setup"}},
+    "inflight": {"lane": {"persona": "reviewer", "provider": "codex", "topic": "setup"}},
     "cost_rows": [
-        {"persona": "bob", "usd": 0.023},
-        {"persona": "bob", "usd": 0.002},
-        {"persona": "jan", "usd": 0.008},
+        {"persona": "builder", "usd": 0.023},
+        {"persona": "builder", "usd": 0.002},
+        {"persona": "reviewer", "usd": 0.008},
     ],
-    "kick_rows": [{"persona": "peter"}, {"persona": "peter"}],
+    "kick_rows": [{"persona": "planner"}, {"persona": "planner"}],
     "matrix": {
-        "archie": {"provider": "claude"},
-        "bob": {"provider": "claude"},
-        "chella": {"provider": "claude"},
-        "eve": {"provider": "claude"},
-        "jan": {"provider": "opencode"},
-        "peter": {"provider": "agy"},
-        "writer": {"provider": "claude"},
+        "planner": {"provider": "claude"},
+        "builder": {"provider": "codex"},
+        "reviewer": {"provider": "opencode"},
     },
 }
 
 MONITOR_EXPECTED = {
-    "archie": {"provider": "claude", "status": "--", "topic": None,
-               "cost_today": 0.0, "runs_today": 0, "kicks_today": 0},
-    "bob": {"provider": "claude", "status": "--", "topic": None,
-            "cost_today": 0.025, "runs_today": 2, "kicks_today": 0},
-    "chella": {"provider": "claude", "status": "--", "topic": None,
-               "cost_today": 0.0, "runs_today": 0, "kicks_today": 0},
-    "eve": {"provider": "claude", "status": "--", "topic": None,
-            "cost_today": 0.0, "runs_today": 0, "kicks_today": 0},
-    "jan": {"provider": "codex", "status": "running", "topic": "setup",
-            "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
-    "peter": {"provider": "agy", "status": "--", "topic": None,
-              "cost_today": 0.0, "runs_today": 0, "kicks_today": 2},
-    "writer": {"provider": "claude", "status": "--", "topic": None,
-               "cost_today": 0.0, "runs_today": 0, "kicks_today": 0},
+    "planner": {"provider": "claude", "status": "--", "topic": None,
+                "cost_today": 0.0, "runs_today": 0, "kicks_today": 2},
+    "builder": {"provider": "codex", "status": "--", "topic": None,
+                "cost_today": 0.025, "runs_today": 2, "kicks_today": 0},
+    "reviewer": {"provider": "codex", "status": "running", "topic": "setup",
+                 "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
 }
 
 MONITOR_LANE_INPUT = {
     "inflight": {
-        "1:first:jan": {"persona": "jan", "provider": "codex", "topic": "first", "ts": 7000,
-                        "stream_id": 1, "message_id": 101},
-        "1:second:jan": {"persona": "jan", "provider": "codex", "topic": "second", "ts": 9700,
-                         "stream_id": 1, "message_id": 102},
-        "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third", "ts": 9900,
-                        "stream_id": 2, "message_id": 103},
+        "1:first:reviewer": {"persona": "reviewer", "provider": "codex", "topic": "first",
+                             "ts": 7000, "stream_id": 1, "message_id": 101},
+        "1:second:reviewer": {"persona": "reviewer", "provider": "codex", "topic": "second",
+                              "ts": 9700, "stream_id": 1, "message_id": 102},
+        "2:third:builder": {"persona": "builder", "provider": "claude", "topic": "third",
+                            "ts": 9900, "stream_id": 2, "message_id": 103},
     },
     "now_ts": 10000,
-    "log_mtimes": {"1:first:jan": 9900, "1:second:jan": 9600, "2:third:bob": 9990},
-    "actions": {"1:first:jan": "running command", "2:third:bob": "writing reply"},
+    "log_mtimes": {"1:first:reviewer": 9900, "1:second:reviewer": 9600,
+                    "2:third:builder": 9990},
+    "actions": {"1:first:reviewer": "running command",
+                "2:third:builder": "writing reply"},
 }
 
 MONITOR_LANE_EXPECTED = [
-    {"lane": "1:first:jan", "stream_id": 1, "message_id": 101, "persona": "jan",
+    {"lane": "1:first:reviewer", "stream_id": 1, "message_id": 101, "persona": "reviewer",
      "provider": "codex", "topic": "first", "running_s": 3000, "idle_s": 100,
      "last_action": "running command", "stuck": True},
-    {"lane": "1:second:jan", "stream_id": 1, "message_id": 102, "persona": "jan",
+    {"lane": "1:second:reviewer", "stream_id": 1, "message_id": 102,
+     "persona": "reviewer",
      "provider": "codex", "topic": "second", "running_s": 300, "idle_s": None,
      "last_action": None, "stuck": False},
-    {"lane": "2:third:bob", "stream_id": 2, "message_id": 103, "persona": "bob",
+    {"lane": "2:third:builder", "stream_id": 2, "message_id": 103, "persona": "builder",
      "provider": "claude", "topic": "third", "running_s": 100, "idle_s": 10,
      "last_action": "writing reply", "stuck": False},
 ]

@@ -4,7 +4,7 @@ import argparse
 import re
 import sys
 
-PERSONAS = ("archie", "bob", "chella", "eve", "jan", "peter", "writer")
+PERSONAS = ("planner", "builder", "reviewer")
 
 def _frontmatter(path):
     text = path.read_text()

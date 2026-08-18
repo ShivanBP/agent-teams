@@ -7,7 +7,7 @@ predecessor a-team was retired and deleted 2026-08-16; its history lives at soto
 Zulip working rules and the permissions ledger live in README.md.
 
 The word is persona, in code and prose. No em-dashes anywhere. Minimal, clean, terse:
-comments are one-line invariants only, and a file Mate cannot read end to end is too long.
+comments earn their lines, and a file Mate cannot read end to end is too long.
 
 Secrets live in ~/.config/agent-team/ and never in this repo. Token and .env work is
 Mate's, always. Never print or log a zuliprc's contents. A wake does not grant itself

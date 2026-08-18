@@ -294,9 +294,9 @@ CLAUDE_ENVIRONMENTS = [
 WAKE_IDENTITIES = [
     ("bob", None, "bob"),
     ("archie", None, "archie"),
-    # operator-reply-as-bridge: the seat runs as the operator-reply agent but its subprocess
-    # env carries AGENT_TEAM_IDENTITY=bridge, so --as bridge from inside it passes.
-    ("operator-reply", "bridge", "bridge"),
+    # the seat is the bridge agent and its subprocess env carries AGENT_TEAM_IDENTITY=bridge,
+    # so --as bridge from inside it passes.
+    ("bridge", "bridge", "bridge"),
     ("bridge", "bridge", "bridge"),
 ]
 
@@ -432,7 +432,7 @@ WORKTREE_REFRESHES = [
 PERSONA_FILES = [
     ("bob", True),
     ("operator", True),
-    ("operator-reply", True),
+    ("bridge", True),
     ("nobody", "raised"),
 ]
 
@@ -480,14 +480,14 @@ PERSONA_DISPLAY_NAMES = [
     ("thoth", "Thoth"),
     ("bob", "Bob"),
     ("maat", "Ma'at"),
-    ("operator-reply", "Operator-reply"),
+    ("two-words", "Two-words"),
 ]
 
 # (persona, identity kwarg, expected memory dir name) for the frame runner._first_prompt builds:
 # the memory dir follows the wake identity, so an operator seat woken as bridge reads memory/bridge.
 MEMORY_IDENTITIES = [
     ("bob", None, "bob"),
-    ("operator-reply", "bridge", "bridge"),
+    ("bridge", "bridge", "bridge"),
     ("operator", "bridge", "bridge"),
 ]
 
@@ -495,7 +495,7 @@ MEMORY_IDENTITIES = [
 # rail makes: both spawn under the bridge identity, so neither keys memory on its agent file name.
 OPERATOR_SPAWNS = [
     ("rail A", "operator", "bridge"),
-    ("rail B", "operator-reply", "bridge"),
+    ("rail B", "bridge", "bridge"),
 ]
 
 # (label, tag age in minutes, expected receipt reactions) for handle_operator_tag. A tag the
@@ -519,7 +519,7 @@ OPERATOR_BRIEF_CONTAINS = [
 # main() is driven for real with run() stubbed, so a flag that parses but is never passed
 # through still fails: delete identity=args.identity and row one goes red.
 CLI_IDENTITY_ARGS = [
-    (["--persona", "operator-reply", "--provider", "claude", "--identity", "bridge", "go"],
+    (["--persona", "bridge", "--provider", "claude", "--identity", "bridge", "go"],
      "bridge"),
     (["--persona", "bob", "--provider", "claude", "go"], None),
 ]
@@ -682,7 +682,7 @@ WAKE_SETTINGS = [
 # "bob" is here to prove the roster and the rails file are separate lookups.
 RAIL_DEFAULTS = [
     ("operator", {"provider", "model", "effort"}),
-    ("operator-reply", {"provider", "model", "effort"}),
+    ("bridge", {"provider", "model", "effort"}),
     ("bob", RuntimeError),
 ]
 
@@ -690,10 +690,10 @@ RAIL_DEFAULTS = [
 # effort its provider has no scale for must stop the boot rather than a live wake.
 _RAIL_ROW = {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"}
 RAIL_BOOTS = [
-    ({"operator": _RAIL_ROW, "operator-reply": _RAIL_ROW}, False),
+    ({"operator": _RAIL_ROW, "bridge": _RAIL_ROW}, False),
     ({"operator": _RAIL_ROW}, True),
-    ({"operator": _RAIL_ROW, "operator-reply": {"provider": "agy", "effort": "high"}}, True),
-    ({"operator": dict(_RAIL_ROW, effort="xtra"), "operator-reply": _RAIL_ROW}, True),
+    ({"operator": _RAIL_ROW, "bridge": {"provider": "agy", "effort": "high"}}, True),
+    ({"operator": dict(_RAIL_ROW, effort="xtra"), "bridge": _RAIL_ROW}, True),
 ]
 
 EFFORT_TRANSLATIONS = [

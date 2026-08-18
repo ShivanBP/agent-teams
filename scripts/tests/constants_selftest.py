@@ -91,7 +91,7 @@ def _body():
             and row["provider"] in _EFFORT_SCALE[row["effort"]]
             for row in rails.values()
         )
-        if set(rails) == {"operator", "operator-reply"} and valid_rows:
+        if set(rails) == {"operator", "bridge"} and valid_rows:
             passed += 1
         else:
             failed += 1

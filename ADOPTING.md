@@ -23,7 +23,7 @@ Stop on any failure. An untouched clone is expected to pass with no environment 
 
 ## Create the fleet
 
-Copy the starters, keep `operator.md` and `operator-reply.md`, and choose two or three persona
+Copy the starters, keep `operator.md` and `bridge.md`, and choose two or three persona
 files to begin:
 
 ```sh

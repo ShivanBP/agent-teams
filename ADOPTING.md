@@ -5,10 +5,18 @@ credential.
 
 ## Verify the clone
 
-Clone the public repository. Before adding personas or config, run every offline selftest:
+Clone the public repository. Create the runtime environment and install the one external
+Python package:
 
 ```sh
-for module in scripts/*.py; do python3 "$module" --selftest || exit 1; done
+python3 -m venv .venv
+.venv/bin/python -m pip install zulip
+```
+
+Before adding personas or config, run every offline selftest:
+
+```sh
+for module in scripts/*.py; do .venv/bin/python "$module" --selftest || exit 1; done
 ```
 
 Stop on any failure. An untouched clone is expected to pass with no environment variables.
@@ -33,6 +41,10 @@ cp config/persona-matrix.example.json config/persona-matrix.json
 cp config/harness-defaults.example.json config/harness-defaults.json
 cp config/model-effort-defaults.example.json config/model-effort-defaults.json
 ```
+
+Each persona's matrix row selects its harness: `claude` runs Claude Code, `codex` runs Codex,
+`agy` runs agy, and `opencode` runs OpenCode. Install and log in only to the CLIs named by
+the live matrix.
 
 Optional browser tools start from `.mcp.example.json`; copy it to the gitignored `.mcp.json`
 and edit it for the local install.

@@ -27,9 +27,15 @@ class Result:
     turns: int
     usage: dict = field(default_factory=dict)
     provider: str = "claude"
+    degraded: str = ""
 
 
 def _failure_output(stderr, stdout):
+    if isinstance(stderr, Path):
+        try:
+            stderr = stderr.read_text()
+        except OSError:
+            stderr = ""
     return "\n".join(part.strip() for part in (stderr, stdout) if part.strip())[-2000:]
 
 
@@ -76,19 +82,25 @@ def last_action(lane):
     return None
 
 
-def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=None):
+def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=None, tee_stderr=False):
+    stderr_log = wake_log.with_suffix(".err") if wake_log is not None and tee_stderr else None
     kwargs = {
-        "cwd": str(cwd), "env": env, "stderr": subprocess.PIPE,
+        "cwd": str(cwd), "env": env,
         "text": True, "timeout": timeout,
     }
     if stdin is not None:
         kwargs["stdin"] = stdin
     if wake_log is None:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, **kwargs)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
         return proc, proc.stdout
     wake_log.parent.mkdir(parents=True, exist_ok=True)
-    with wake_log.open("w") as output:
-        proc = subprocess.run(cmd, stdout=output, **kwargs)
+    if stderr_log is None:
+        with wake_log.open("w") as output:
+            proc = subprocess.run(cmd, stdout=output, stderr=subprocess.PIPE, **kwargs)
+    else:
+        with wake_log.open("w") as output, stderr_log.open("w") as errors:
+            proc = subprocess.run(cmd, stdout=output, stderr=errors, **kwargs)
+        proc.stderr = stderr_log
     return proc, wake_log.read_text()
 
 
@@ -227,16 +239,20 @@ def _parse_agy(text, session=None):
             break
     if payload is None:
         raise RuntimeError("agy stdout has no JSON object")
-    if payload.get("status") != "SUCCESS":
+    reply = payload.get("response")
+    degraded = ""
+    if payload.get("status") != "SUCCESS" and (
+            not isinstance(reply, str) or not reply.strip()):
         raise RuntimeError("agy status is not SUCCESS: %r" % payload.get("status"))
     session_id = payload.get("conversation_id")
     if not isinstance(session_id, str) or not session_id.strip():
         raise RuntimeError("agy JSON has no conversation id")
     if session and session_id != session:
         raise RuntimeError("agy resumed conversation %s returned id %s" % (session, session_id))
-    reply = payload.get("response")
     if not isinstance(reply, str) or not reply.strip():
         raise RuntimeError("agy returned an empty response")
+    if payload.get("status") != "SUCCESS":
+        degraded = " ".join(str(payload.get("error") or payload.get("status")).split())[:2000]
     raw_usage = payload.get("usage")
     if not isinstance(raw_usage, dict):
         raw_usage = payload
@@ -248,7 +264,7 @@ def _parse_agy(text, session=None):
     for key in ("output_tokens", "thinking_tokens", "total_tokens"):
         if key in raw_usage:
             usage[key] = raw_usage[key]
-    return reply, session_id, 1, usage
+    return reply, session_id, 1, usage, degraded
 
 
 def _without_frontmatter(text):
@@ -350,7 +366,7 @@ def _run_codex(persona, prompt, *, model, effort, session, cwd, timeout, identit
         # DEVNULL or codex exec reads its extra input from an open stdin and blocks (Peter, 2026-08-16).
         proc, stdout = _run_jsonl(
             cmd, cwd=run_cwd, env=env, stdin=subprocess.DEVNULL,
-            timeout=timeout, wake_log=wake_log)
+            timeout=timeout, wake_log=wake_log, tee_stderr=True)
         if proc.returncode != 0:
             raise RuntimeError(
                 "codex exec failed (exit %d) for persona %s: %s" %
@@ -437,7 +453,8 @@ def _run_opencode(persona, prompt, *, model, effort, session, cwd, timeout, iden
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     env["OPENCODE_DISABLE_CLAUDE_CODE"] = "true"
     proc, stdout = _run_jsonl(
-        cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log)
+        cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
+        tee_stderr=True)
     if proc.returncode != 0:
         raise RuntimeError(
             "opencode run failed (exit %d) for persona %s: %s" %
@@ -455,14 +472,15 @@ def _run_agy(persona, prompt, *, model, effort, session, cwd, timeout, identity,
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     proc, stdout = _run_jsonl(
-        cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log)
+        cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
+        tee_stderr=True)
     if proc.returncode != 0:
         raise RuntimeError(
             "agy failed (exit %d) for persona %s: %s" %
             (proc.returncode, persona, _failure_output(proc.stderr, stdout)))
-    reply, session_id, turns, usage = _parse_agy(stdout, session)
+    reply, session_id, turns, usage, degraded = _parse_agy(stdout, session)
     return Result(reply=reply.strip(), session_id=session_id, cost_usd=0.0, turns=turns,
-                  usage=usage, provider="agy")
+                  usage=usage, provider="agy", degraded=degraded)
 
 
 def wake_slug(stream_id, topic):
@@ -919,6 +937,23 @@ def _selftest():
         else:
             failed += 1
             print("FAIL killed wake log retained %r wanted 'partial\\n'" % got)
+        import time as time_mod
+        code, expected_stdout, expected_stderr, max_seconds = cases.JSONL_BACKGROUND
+        started = time_mod.monotonic()
+        proc, got = _run_jsonl(
+            [sys.executable, "-c", code], cwd=REPO_DIR,
+            env=dict(os.environ), timeout=5, wake_log=wake_log, tee_stderr=True)
+        elapsed = time_mod.monotonic() - started
+        stderr_log = wake_log.with_suffix(".err")
+        if (proc.returncode == 0 and got == expected_stdout
+                and stderr_log.read_text() == expected_stderr
+                and _failure_output(proc.stderr, got) == "child err\nfresh"
+                and elapsed < max_seconds):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL stderr tee -> %r, %r, %.2fs wanted %r, %r, <%.2fs" %
+                  (proc.returncode, got, elapsed, expected_stdout, expected_stderr, max_seconds))
 
     original_repo_dir = REPO_DIR
     log.disabled = True  # the "real" row logs its own warning by design

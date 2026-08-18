@@ -317,6 +317,14 @@ LAST_ACTION_LOG = '\n'.join([
 ]) + '\n'
 LAST_ACTION_EXPECTED = "running command"
 
+JSONL_BACKGROUND = (
+    'import subprocess, sys; print("fresh"); print("child err", file=sys.stderr); '
+    'subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3)"])',
+    "fresh\n",
+    "child err\n",
+    1.5,
+)
+
 # (identity, worktree exists, expected) for runner.wants_worktree
 WORKTREE_ROUTES = [
     ("bob", False, True),
@@ -1088,7 +1096,7 @@ AGY_PARSES = [
         ("stream ok", "agy-stream", 1, {
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
             "input_tokens": 12, "output_tokens": 2, "total_tokens": 14,
-        }),
+        }, ""),
     ),
     (
         '{"status":"SUCCESS","conversation_id":"agy-fresh","response":"fresh ok",'
@@ -1099,7 +1107,7 @@ AGY_PARSES = [
             "cache_read_input_tokens": 4, "cache_creation_input_tokens": 0,
             "input_tokens": 10, "output_tokens": 3, "thinking_tokens": 2,
             "total_tokens": 19,
-        }),
+        }, ""),
     ),
     (
         '{"status":"SUCCESS","conversation_id":"agy-resume","response":"resume ok",'
@@ -1108,7 +1116,7 @@ AGY_PARSES = [
         ("resume ok", "agy-resume", 1, {
             "cache_read_input_tokens": 6, "cache_creation_input_tokens": 0,
             "input_tokens": 8,
-        }),
+        }, ""),
     ),
     (
         'startup diagnostic\n{"status":"SUCCESS","conversation_id":"agy-noisy",'
@@ -1117,9 +1125,39 @@ AGY_PARSES = [
         ("noise ignored", "agy-noisy", 1, {
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
             "input_tokens": 0,
-        }),
+        }, ""),
     ),
-    ('{"status":"ERROR","conversation_id":"agy-bad","response":"no"}', None, RuntimeError),
+    (
+        '{"event":"result","result":{"conversation_id":'
+        '"a51966c1-6ca2-4eae-b34b-feb16d797c47","status":"ERROR",'
+        '"response":"Verdict: PASS. All 6 probe targets survived contact under direct '
+        'adversarial attacks and mutation testing across 8 mutation targets; 0 findings.",'
+        '"error":"invalid tool call error (invalid_args) '
+        '/Users/soto/.eve-scratch/probe_status_board.py is not a valid artifact path; '
+        'artifacts must be in brain/a51966c1-6ca2-4eae-b34b-feb16d797c47/"}}',
+        None,
+        (
+            "Verdict: PASS. All 6 probe targets survived contact under direct adversarial "
+            "attacks and mutation testing across 8 mutation targets; 0 findings.",
+            "a51966c1-6ca2-4eae-b34b-feb16d797c47", 1,
+            {"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
+             "input_tokens": 0},
+            "invalid tool call error (invalid_args) "
+            "/Users/soto/.eve-scratch/probe_status_board.py is not a valid artifact path; "
+            "artifacts must be in brain/a51966c1-6ca2-4eae-b34b-feb16d797c47/",
+        ),
+    ),
+    (
+        '{"status":"ERROR","conversation_id":'
+        '"a51966c1-6ca2-4eae-b34b-feb16d797c47","response":"PONG",'
+        '"error":"invalid tool call error: poisoned session"}',
+        "a51966c1-6ca2-4eae-b34b-feb16d797c47",
+        ("PONG", "a51966c1-6ca2-4eae-b34b-feb16d797c47", 1, {
+            "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
+            "input_tokens": 0,
+        }, "invalid tool call error: poisoned session"),
+    ),
+    ('{"status":"ERROR","conversation_id":"agy-bad","response":""}', None, RuntimeError),
     ('{"status":"SUCCESS","response":"no id"}', None, RuntimeError),
     ('{"status":"SUCCESS","conversation_id":"other","response":"wrong"}', "wanted", RuntimeError),
     ('{"status":"SUCCESS","conversation_id":"agy-empty","response":""}', None, RuntimeError),
@@ -1215,18 +1253,20 @@ NOTICED_REPLIES = [
 PROVIDER_PROMPTS = [
     (
         ("agy", "peter", "wake", "persona body", "memory body"),
-        ("Peter running through agy", "memory body", "Current wake:\nwake"),
+        ("Peter running through agy", "memory body", "Current wake:\nwake",
+         "On agy, create files with shell commands",
+         "write_to_file only for artifacts inside the brain directory"),
         ("Repository rules:",),
     ),
     (
         ("codex", "eve", "wake", "persona body", ""),
         ("Eve running through codex", "Current wake:\nwake"),
-        ("Canonical persona memory root:", "Repository rules:"),
+        ("Canonical persona memory root:", "Repository rules:", "On agy, create files"),
     ),
     (
         ("opencode", "jan", "wake", "persona body", "memory body"),
         ("Jan running through opencode", "memory body", "Current wake:\nwake"),
-        ("Repository rules:",),
+        ("Repository rules:", "On agy, create files"),
     ),
 ]
 
@@ -1271,6 +1311,8 @@ WAKE_FOOTERS = [
      "\n\n```\nclaude | opus | xtra | session -\n```"),
     ((None, None, None, None),
      "\n\n```\n- | - | - | session -\n```"),
+    (("agy", "gemini-3.7-flash", "high", "agy-1", "artifact path refused"),
+     "\n\n```\nagy | gemini-3.7-flash | high | session agy-1 | degraded: artifact path refused\n```"),
 ]
 
 # (body, footer, expected) for send.with_footer: the footer lands last, one blank line down,

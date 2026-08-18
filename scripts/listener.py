@@ -415,7 +415,8 @@ def handle_wake(identity, event, flag_holder_ids):
                 post_channel, post_topic = _post_at_current_location(
                     identity, message_id, channel, topic,
                     prompts.with_notice(result.reply, worktree_notice),
-                    prompts.wake_footer(result.provider, run_model, run_level, result.session_id))
+                    prompts.wake_footer(result.provider, run_model, run_level, result.session_id,
+                                        result.degraded))
             except (Exception, SystemExit):
                 log.exception("wake failed for lane %s", lane)
                 # a failed wake leaves no resumable session: dropped before the note, so a post
@@ -556,7 +557,8 @@ def handle_operator_tag(event, mate_id):
         # Rail B asks for no model or effort, so those two fields stamp as '-': the footer reports
         # what the runner was told, and this rail tells it nothing.
         _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, result.reply,
-                                   prompts.wake_footer(result.provider, None, None, result.session_id))
+                                   prompts.wake_footer(result.provider, None, None, result.session_id,
+                                                       result.degraded))
     except (Exception, SystemExit):
         log.exception("operator-reply run failed for tag message %s", message_id)
 

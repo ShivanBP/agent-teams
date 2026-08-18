@@ -91,6 +91,11 @@ PROVIDER_FRAME = (
     "conflict, that order wins.\n\nPersona definition:\n{persona}"
 )
 
+AGY_FILE_FRAME = (
+    "On agy, create files with shell commands. Use write_to_file only for artifacts inside "
+    "the brain directory."
+)
+
 
 MEMORY_FRAME = (
     "Canonical persona memory root: {root}\n"
@@ -122,6 +127,8 @@ def with_memory_frame(memory, wake):
 def provider_prompt(provider, persona_name, wake, persona, memory=""):
     text = PROVIDER_FRAME.format(
         provider=provider, persona_name=persona_name.capitalize(), persona=persona)
+    if provider == "agy":
+        text += "\n\n" + AGY_FILE_FRAME
     if memory:
         text += "\n\n" + memory
     return text + "\n\nCurrent wake:\n" + wake
@@ -130,18 +137,18 @@ def provider_prompt(provider, persona_name, wake, persona, memory=""):
 # The footer on a wake's posted reply: the harness, model and effort that produced it, plus the
 # session id Mate resumes with. Stamped by the listener from the runner's resolved values; a
 # persona never composes it, because a wake is not told its own model or effort.
-WAKE_FOOTER = "\n\n```\n{harness} | {model} | {effort} | session {session}\n```"
+WAKE_FOOTER = "\n\n```\n{harness} | {model} | {effort} | session {session}{degraded}\n```"
 
 
-def wake_footer(provider, model, level, session_id):
-    """Four fields always: a missing one renders '-' so a gap is visible rather than silent. The
-    model is its last slash-segment, because a provider model string runs to 55 characters, and
-    the effort is the fleet's word (low/mid/high/xtra), not the harness's translation."""
+def wake_footer(provider, model, level, session_id, degraded=""):
+    """Four fields always; degraded appends a fifth. Missing values render '-' rather than silent.
+    The model is its last slash-segment, and effort is the fleet's word, not the harness's."""
     return WAKE_FOOTER.format(
         harness=provider or "-",
         model=(model or "").rsplit("/", 1)[-1] or "-",
         effort=level or "-",
         session=session_id or "-",
+        degraded=" | degraded: %s" % degraded if degraded else "",
     )
 
 

@@ -7,10 +7,10 @@ predecessor a-team was retired and deleted 2026-08-16; its history lives at soto
 Zulip working rules and the permissions ledger live in docs/OPERATING.md.
 
 The word is persona, in code and prose. No em-dashes anywhere. Minimal, clean, terse:
-comments earn their lines, and a file Mate cannot read end to end is too long.
+comments earn their lines, and a file the operator cannot read end to end is too long.
 
 Secrets live in ~/.config/agent-team/ and never in this repo. Token and .env work is
-Mate's, always. Never print or log a zuliprc's contents. A wake does not grant itself
+the operator's, always. Never print or log a zuliprc's contents. A wake does not grant itself
 capabilities.
 
 Personal content lives only in `memory/`, `plans/`, `agents/`, and gitignored config.
@@ -53,9 +53,9 @@ you, with the reason in the briefing as one line. Never spawn a subagent on fabl
 
 scripts/restart.sh is the only restart path: a bare kickstart can kill a wake mid-run.
 
-Main takes no direct pushes, Mate included: every public change lands through a PR that merges
-itself on green. Personal content in the private repo is the exception; commit.py pushes it
-directly, and commit.py refuses a public path.
+Main takes no direct pushes, the operator included: every public change lands through a PR
+that merges itself on green. Personal content in the private repo is the exception; commit.py
+pushes it directly, and commit.py refuses a public path.
 
 Private-repo git mutations run only through `python3 scripts/commit.py -m "message"
 <path>...`: name every path, never use `git stash`, and never substitute raw git if its bounded

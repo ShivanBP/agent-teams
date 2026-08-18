@@ -44,7 +44,7 @@ def cap_messages(messages, max_chars=constants.TODO_SWEEP_MAX_CHARS):
     return rows, dropped
 
 
-def harvest(as_name=constants.OPERATOR_IDENTITY, cursor=None):
+def harvest(cursor=None, as_name=constants.OPERATOR_IDENTITY):
     cfg = api.load(as_name)
     messages = []
     next_cursor = int(cursor or 0)
@@ -284,6 +284,20 @@ def _selftest():
         failed += 1
         print("FAIL run_once -> rows=%r dropped=%r state=%r posts=%r" %
               (rows, got_dropped, state, posts))
+
+    cursor_calls = []
+    state = {"cursor": cases.TODO_DEFAULT_CURSOR}
+    old_harvest = harvest
+    try:
+        globals()["harvest"] = lambda cursor: cursor_calls.append(cursor) or ([], cursor, 0)
+        run_once(load_fn=lambda name: state, mutate_fn=lambda name, fn: fn(state))
+    finally:
+        globals()["harvest"] = old_harvest
+    if cursor_calls == [cases.TODO_DEFAULT_CURSOR]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL default harvest wiring passed %r" % (cursor_calls,))
 
     print("todo.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

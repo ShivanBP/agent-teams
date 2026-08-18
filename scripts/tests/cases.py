@@ -735,6 +735,8 @@ TODO_RUN_EXPECTED = [
      "message_id": 22},
 ]
 
+TODO_DEFAULT_CURSOR = 617091542
+
 # (with-narrow response payload, expected (stream_id, topic, content)) for loops._extract_location
 WITH_NARROW = [
     ({"result": "success", "messages": [{"stream_id": 7, "subject": "phase 3 loop", "content": "kick off"}]},

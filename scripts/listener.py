@@ -16,6 +16,7 @@ import time
 import api
 import constants
 import loops
+import monitor
 import personas
 import prompts
 import read as read_mod
@@ -548,6 +549,7 @@ def stall_sweep_once(now_ts=None):
                 data[lane]["alerted"] = True
 
         store.mutate("inflight", fn)
+    monitor.update_board()
 
 
 def stall_sweep_thread(interval=60):
@@ -885,6 +887,20 @@ def _selftest():
             failed += 1
             print("FAIL wake failure on lane %s left session %r, passed lanes %r wanted %r, [%r]" %
                   (lane, got, run_lanes, expected, lane))
+
+    board_updates = []
+    old_inflight, old_update = store.inflight_all, monitor.update_board
+    try:
+        store.inflight_all = lambda: {}
+        monitor.update_board = lambda: board_updates.append(True)
+        stall_sweep_once(now_ts=1000)
+    finally:
+        store.inflight_all, monitor.update_board = old_inflight, old_update
+    if board_updates == [True]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL stall_sweep_once did not tail-call the board update")
 
     print("listener.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

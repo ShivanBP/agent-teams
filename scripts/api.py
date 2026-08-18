@@ -178,6 +178,14 @@ def visible_streams(name):
     return sorted(s["name"] for s in payload.get("streams", []))
 
 
+def topics(name, stream_id):
+    cfg = load(name)
+    payload = request(cfg, "GET", "/api/v1/users/me/%d/topics" % int(stream_id))
+    if payload.get("result") != "success":
+        return []
+    return payload.get("topics", [])
+
+
 def refuse_narrow_miss(as_name, channel):
     """Refuses with NARROW_MISS plus the identity's visible streams, exit 4; send.py's post,
     move_topic, and read.py's main() shared this block before extraction."""
@@ -228,6 +236,19 @@ def _selftest():
         else:
             failed += 1
             print("FAIL enforce_identity(%r) under %r exited=%s" % (asked, env, exited))
+    old_load, old_request = load, request
+    try:
+        globals()["load"] = lambda name: {"name": name}
+        for payload, expected in cases.TOPICS:
+            globals()["request"] = lambda *a, payload=payload, **k: payload
+            got = topics("bridge", 7)
+            if got == expected:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL topics(...) -> %r wanted %r" % (got, expected))
+    finally:
+        globals()["load"], globals()["request"] = old_load, old_request
     print("api.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0
 

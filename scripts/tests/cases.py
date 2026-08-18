@@ -46,6 +46,14 @@ IDENTITY = [
     ("bridge", "bridge", False),
 ]
 
+# (GET topics response, expected topic rows) for api.topics
+TOPICS = [
+    ({"result": "success", "topics": [{"name": "one", "max_id": 9}]},
+     [{"name": "one", "max_id": 9}]),
+    ({"result": "error", "msg": "no"}, []),
+    ({"result": "success"}, []),
+]
+
 # (path, index, exists, is_dir, size, is_symlink, expected refusal key or None) for send.classify_attach
 ATTACHES = [
     ("/Users/soto/Projects/agent-team/plans/p.md", 0, True, False, 1024, False, None),
@@ -618,6 +626,33 @@ MONITOR_AGES = [
     (3599, "59m"),
     (3600, "1h 00m"),
     (90000, "1d 01h"),
+]
+
+BOARD_TODO_INPUT = (
+    [
+        {"channel": "setup", "name": "Build board", "permalink": "https://example/1"},
+    ],
+    [
+        {"channel": "setup", "name": "Build board", "permalink": "https://example/2"},
+        {"channel": "maintenance", "name": "Fix [hook]", "permalink": "https://example/3"},
+    ],
+)
+
+BOARD_TODO_EXPECTED = [
+    {"channel": "setup", "name": "Build board", "permalink": "https://example/1"},
+    {"channel": "maintenance", "name": "Fix [hook]", "permalink": "https://example/3"},
+]
+
+BOARD_RENDER_CONTAINS = [
+    "## Active lanes",
+    "## Todo",
+    "[Build board](https://example/1)",
+    "[Fix \\[hook\\]](https://example/3)",
+]
+
+BOARD_RECENT_EXPECTED = [
+    {"channel": "setup", "name": "recent",
+     "permalink": "https://example/#narrow/channel/7-setup/topic/recent/near/11"},
 ]
 
 # (with-narrow response payload, expected (stream_id, topic, content)) for loops._extract_location

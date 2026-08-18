@@ -178,6 +178,27 @@ STALL_ALERT_NO_LOOP = (
     "but no open loop was found to pause."
 )
 
+BOARD_TEMPLATE = (
+    "## Active lanes\n"
+    "```text\n{lanes}\n\n{personas}\n```\n\n"
+    "## Todo\n"
+    "{todos}"
+)
+
+BOARD_TODO_ROW = "- [{name}]({permalink})"
+BOARD_TODO_NONE = "- None"
+BOARD_STUCK = "STUCK"
+BOARD_UNKNOWN = "-"
+BOARD_IDLE_STATUS = "--"
+BOARD_RUNNING = "running"
+BOARD_RUNNING_TOPIC = "running ({topic})"
+BOARD_COST = "${usd:.3f}"
+BOARD_LANE_HEADERS = ("Persona", "Provider", "Topic", "Running", "Idle", "State")
+BOARD_PERSONA_HEADERS = ("Persona", "Provider", "Status", "Cost Today", "Kicks Today")
+BOARD_AGE_MIN = "{minutes}m"
+BOARD_AGE_HOUR = "{hours}h {minutes:02d}m"
+BOARD_AGE_DAY = "{days}d {hours:02d}h"
+
 TAG_STALE = (
     "Refused: a tag from {sender} on message {message_id} is older than {max_age} minutes; "
     "skipped rather than answered late."

@@ -505,11 +505,14 @@ OPERATOR_TAG_RECEIPTS = [
     ("stale tag", 24 * 60, 0),
 ]
 
-# (rail label, substring the brief must carry) for the same two spawns. The state block reaches
-# both rails, so dropping either state= kwarg at a call site turns one of these red.
+# (rail label, brief index, substring the brief must carry) for the same two spawns. The state
+# block reaches both rails, so dropping either state= kwarg at a call site turns one of these
+# red. Rail B's third row is the tag message id (2 in the driver): the seat opens its loop
+# against that id, so a brief that stops carrying it leaves the seat with no header to name.
 OPERATOR_BRIEF_CONTAINS = [
-    ("rail A", "Fleet state, read from the ledgers"),
-    ("rail B", "Fleet state, read from the ledgers"),
+    ("rail A", 0, "Fleet state, read from the ledgers"),
+    ("rail B", 1, "Fleet state, read from the ledgers"),
+    ("rail B", 1, "message 2"),
 ]
 
 # (argv after the program name, expected identity kwarg at the run() call) for runner.main.
@@ -1307,6 +1310,8 @@ PROMPT_CONTAINS = [
     ("STATE_BLOCK", "already fetched"),
     ("OPERATOR_BRIEF", "{state}"),
     ("OPERATOR_REPLY_BRIEF", "{state}"),
+    ("OPERATOR_REPLY_BRIEF", "{message_id}"),
+    ("OPERATOR_REPLY_BRIEF", "You are Bridge's Zulip seat"),
     ("OPERATOR_CONTINUATION_FAILED", "{reason}"),
     ("OPERATOR_CONTINUATION_FAILED", "Tag the bridge again to retry"),
     ("OPERATOR_REPLY_FAILED", "{reason}"),

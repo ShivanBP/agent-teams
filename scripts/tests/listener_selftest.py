@@ -256,13 +256,13 @@ def _body():
             failed += 1
             print("FAIL %s spawn -> %r wanted %r" % (label, got, (persona, identity)))
 
-    for i, (label, substring) in enumerate(cases.OPERATOR_BRIEF_CONTAINS):
-        got = briefs[i] if i < len(briefs) else ""
+    for label, index, substring in cases.OPERATOR_BRIEF_CONTAINS:
+        got = briefs[index] if index < len(briefs) else ""
         if substring in got:
             passed += 1
         else:
             failed += 1
-            print("FAIL %s brief carried no state block (%r)" % (label, substring))
+            print("FAIL %s brief lacks %r" % (label, substring))
 
     expected_failure_posts = [
         (constants.OPERATOR_IDENTITY, "c", "t",

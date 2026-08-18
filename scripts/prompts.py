@@ -329,8 +329,8 @@ OPERATOR_BRIEF = (
 REPLY_TRUNCATION_NOTE = "\n[reply truncated: showing the first {limit} of {total} characters]"
 
 OPERATOR_REPLY_BRIEF = (
-    "Mate tagged you directly in this topic. His message is the one instruction; carry it out "
-    "and reply in this topic with the result.\n\n"
+    "You are Bridge's Zulip seat. Mate tagged you (message {message_id}) in this topic. His "
+    "message is the one instruction; carry it out and reply in this topic with the result.\n\n"
     "His message: {message}\n"
     "{loop_note}\n\n"
     "{state}\n\n"

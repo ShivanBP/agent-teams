@@ -567,8 +567,10 @@ def handle_operator_tag(event, mate_id):
         loop_note = prompts.LOOP_NOTE.format(loop_id=loop["id"], n=loop["kicks"], budget=loop["budget"])
 
     record, _ = build_delta_record(constants.OPERATOR_IDENTITY, channel, topic, None)
+    # the tag message is the id the seat opens a loop against: it is the header, never one of
+    # Bridge's own posts.
     brief = prompts.OPERATOR_REPLY_BRIEF.format(message=content.strip(), record=record or "",
-                                                loop_note=loop_note,
+                                                loop_note=loop_note, message_id=message_id,
                                                 state=prompts.state_block(store.state_summary()))
     try:
         # the seat runs as the operator-reply agent but posts as bridge (decision 1, plan of

@@ -184,11 +184,12 @@ def _body():
             failed += 1
             print("FAIL _parse_opencode(...) -> %r wanted %r" % (got, expected))
 
-    for inherited, expected in cases.OPENCODE_ENVIRONMENTS:
+    for inherited, expected, expected_stdin in cases.OPENCODE_ENVIRONMENTS:
         before = os.environ.get("OPENCODE_DISABLE_CLAUDE_CODE")
         captured = {}
 
         def fake_run(*args, **kwargs):
+            captured["stdin"] = kwargs.get("stdin")
             captured.update(kwargs["env"])
             return subprocess.CompletedProcess(
                 args[0], 0, stdout=(
@@ -212,12 +213,13 @@ def _body():
             else:
                 os.environ["OPENCODE_DISABLE_CLAUDE_CODE"] = before
         got = captured.get("OPENCODE_DISABLE_CLAUDE_CODE")
-        if got == expected:
+        got_stdin = "devnull" if captured.get("stdin") == subprocess.DEVNULL else "other"
+        if got == expected and got_stdin == expected_stdin:
             passed += 1
         else:
             failed += 1
-            print("FAIL OpenCode env from %r -> %r wanted %r" %
-                  (inherited, got, expected))
+            print("FAIL OpenCode env/stdin from %r -> %r/%r wanted %r/%r" %
+                  (inherited, got, got_stdin, expected, expected_stdin))
 
     for inherited, expected in cases.CLAUDE_ENVIRONMENTS:
         before = os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY")

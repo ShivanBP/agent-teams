@@ -82,14 +82,15 @@ def last_action(lane):
     return None
 
 
-def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=None, tee_stderr=False):
+def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=subprocess.DEVNULL,
+               tee_stderr=False):
     stderr_log = wake_log.with_suffix(".err") if wake_log is not None and tee_stderr else None
+    # Without DEVNULL an unattended CLI can read or hold the listener's stdin open and block
+    # (Peter, 2026-08-16).
     kwargs = {
         "cwd": str(cwd), "env": env,
-        "text": True, "timeout": timeout,
+        "text": True, "timeout": timeout, "stdin": stdin,
     }
-    if stdin is not None:
-        kwargs["stdin"] = stdin
     if wake_log is None:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
         return proc, proc.stdout
@@ -363,10 +364,9 @@ def _run_codex(persona, prompt, *, model, effort, session, cwd, timeout, identit
         cmd = _build_cmd_codex(model, session, effort, final_path, run_prompt)
         env = dict(os.environ)
         env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
-        # DEVNULL or codex exec reads its extra input from an open stdin and blocks (Peter, 2026-08-16).
         proc, stdout = _run_jsonl(
-            cmd, cwd=run_cwd, env=env, stdin=subprocess.DEVNULL,
-            timeout=timeout, wake_log=wake_log, tee_stderr=True)
+            cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
+            tee_stderr=True)
         if proc.returncode != 0:
             raise RuntimeError(
                 "codex exec failed (exit %d) for persona %s: %s" %

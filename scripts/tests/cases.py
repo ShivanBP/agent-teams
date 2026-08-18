@@ -1091,8 +1091,8 @@ OPENCODE_RUNNER_CMDS = [
 ]
 
 OPENCODE_ENVIRONMENTS = [
-    (None, "true"),
-    ("false", "true"),
+    (None, "true", "devnull"),
+    ("false", "true", "devnull"),
 ]
 
 # Captured from opencode run --format json on this Mac, 2026-08-13.

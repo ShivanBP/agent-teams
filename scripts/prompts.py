@@ -257,6 +257,14 @@ WAKE_FAILED_NOTE = "[wake failed; see ~/.config/agent-team/logs]"
 
 # --- operator rails (Phase 3): loop continuation and Mate's direct tag -------------------------
 
+OPERATOR_CONTINUATION_FAILED = (
+    "Operator continuation failed: {reason}. Tag the bridge again to retry."
+)
+
+OPERATOR_REPLY_FAILED = (
+    "Operator reply failed: {reason}. Tag the bridge again to retry."
+)
+
 # Pre-fetched ledger facts, so an estate question costs the seat no tool calls. Facts only: if a
 # line needs a sentence to explain it, it is judgment and it does not belong here.
 STATE_BLOCK = (

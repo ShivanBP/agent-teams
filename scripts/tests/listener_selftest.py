@@ -21,6 +21,7 @@ def _body():
     import loops
     import monitor
     import personas
+    import prompts
     import runner
     import send as send_mod
     import store
@@ -164,27 +165,36 @@ def _body():
     spawns = []
     reacts = []
     briefs = []
+    failure_posts = []
+    location_requests = []
 
     def _stub_run(persona, prompt, **kw):
         spawns.append((persona, kw.get("identity")))
         briefs.append(prompt)
-        raise _Stop()
+        raise _Stop("529\nOverloaded")
+
+    def _capture_failure_post(identity, channel, topic, body, **kw):
+        failure_posts.append((identity, channel, topic, body, kw.get("footer", "")))
+
+    def _location_request(cfg, method, path):
+        location_requests.append((cfg, method, path))
+        return {"result": "error"}
 
     receipts = []
     saved = (runner.run, loops.loop_for_lane, loops.budget_reached, build_delta_record, log.disabled,
-             send_mod.react)
+             send_mod.react, send_mod.post, api.load, api.request)
     try:
         log.disabled = True
         runner.run = _stub_run
         send_mod.react = lambda *a: reacts.append(a)
+        send_mod.post = _capture_failure_post
+        api.load = lambda identity: identity
+        api.request = _location_request
         loops.budget_reached = lambda *a, **k: False
         loops.loop_for_lane = lambda *a, **k: {"id": 1, "current_channel": None, "current_topic": None,
                                                "kicks": 0, "budget": 3, "header_id": 1, "header_text": ""}
         globals()["build_delta_record"] = lambda *a, **k: ("", None)
-        try:
-            handle_rail_a(1, "c", "t", "record", "reply")
-        except _Stop:
-            pass
+        handle_rail_a(1, "c", "t", "record", "reply")
         loops.loop_for_lane = lambda *a, **k: None
         # the fresh row is also rail B's spawn case; the stale row must return before both.
         for label, age_min, expected in cases.OPERATOR_TAG_RECEIPTS:
@@ -197,7 +207,8 @@ def _body():
         runner.run, loops.loop_for_lane, loops.budget_reached = saved[:3]
         globals()["build_delta_record"] = saved[3]
         log.disabled = saved[4]
-        send_mod.react = saved[5]
+        send_mod.react, send_mod.post = saved[5:7]
+        api.load, api.request = saved[7:9]
 
     for label, got, expected in receipts:
         want = [(constants.OPERATOR_IDENTITY, 2, constants.EMOJI_RECEIPT)] * expected
@@ -222,6 +233,43 @@ def _body():
         else:
             failed += 1
             print("FAIL %s brief carried no state block (%r)" % (label, substring))
+
+    expected_failure_posts = [
+        (constants.OPERATOR_IDENTITY, "c", "t",
+         prompts.OPERATOR_CONTINUATION_FAILED.format(reason="529 Overloaded"), ""),
+        (constants.OPERATOR_IDENTITY, "c", "t",
+         prompts.OPERATOR_REPLY_FAILED.format(reason="529 Overloaded"), ""),
+    ]
+    if (failure_posts == expected_failure_posts and
+            location_requests == [(constants.OPERATOR_IDENTITY, "GET", "/api/v1/messages/2")]):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL operator failure notices -> posts=%r requests=%r wanted posts=%r" %
+              (failure_posts, location_requests, expected_failure_posts))
+
+    notice_attempts = []
+    saved_notice = (send_mod.post, api.load, api.request, log.disabled)
+
+    def _fail_notice(*args, **kwargs):
+        notice_attempts.append((args, kwargs))
+        raise SystemExit("zulip unavailable")
+
+    try:
+        log.disabled = True
+        send_mod.post = _fail_notice
+        api.load = lambda identity: identity
+        api.request = lambda *a, **k: {"result": "error"}
+        _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, RuntimeError("first\nsecond"),
+                               "c", "t", 9)
+        _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, SystemExit(), "c", "t")
+    finally:
+        send_mod.post, api.load, api.request, log.disabled = saved_notice
+    if len(notice_attempts) == 2:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL operator failure notice send escaped or retried: %r" % (notice_attempts,))
 
     class _LogCapture(logging.Handler):
         def __init__(self):

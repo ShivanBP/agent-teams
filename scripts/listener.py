@@ -204,6 +204,18 @@ def _post_at_current_location(identity, message_id, channel, topic, body, footer
     return post_channel, post_topic
 
 
+def _post_operator_failure(template, exc, channel, topic, message_id=None):
+    reason = " ".join(str(exc).split()) or type(exc).__name__
+    body = template.format(reason=reason)
+    try:
+        if message_id is None:
+            send_mod.post(constants.OPERATOR_IDENTITY, channel, topic, body)
+        else:
+            _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, body)
+    except (Exception, SystemExit):
+        log.exception("failed to post operator failure notice")
+
+
 def refresh_topic_digest(identity, channel, topic):
     stream_id = api.stream_id(identity, channel)
     if stream_id is not None:
@@ -432,8 +444,10 @@ def handle_wake(identity, event, flag_holder_ids):
                 # topic goes to the loop lookup too, so a rename doesn't miss the loop.
                 try:
                     handle_rail_a(stream_id, post_channel, post_topic, record, result.reply)
-                except (Exception, SystemExit):
+                except (Exception, SystemExit) as exc:
                     log.exception("rail A continuation check failed for lane %s", lane)
+                    _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc,
+                                           post_channel, post_topic)
     finally:
         store.inflight_clear(lane)
 
@@ -472,7 +486,12 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
         record=record or "",
     )
     # both operator rails spawn under the bridge identity, or the two grow separate memory trees.
-    result = runner.run("operator", brief, provider="claude", identity=constants.OPERATOR_IDENTITY)
+    try:
+        result = runner.run("operator", brief, provider="claude", identity=constants.OPERATOR_IDENTITY)
+    except (Exception, SystemExit) as exc:
+        log.exception("operator continuation run failed for loop %s", loop_id)
+        _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc, dest_channel, dest_topic)
+        return
     _append_cost("operator", dest_topic, result)
     decision = parse_operator_decision(result.reply)
     if decision is None:
@@ -557,8 +576,9 @@ def handle_operator_tag(event, mate_id):
         _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, result.reply,
                                    prompts.wake_footer(result.provider, None, None, result.session_id,
                                                        result.degraded))
-    except (Exception, SystemExit):
+    except (Exception, SystemExit) as exc:
         log.exception("operator-reply run failed for tag message %s", message_id)
+        _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, exc, channel, topic, message_id)
 
 
 # --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----

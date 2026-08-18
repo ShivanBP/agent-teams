@@ -96,6 +96,12 @@ VERB_GATE = [
     ("", False),
 ]
 
+# (identity, message id, content, expected PATCH content) for send.update
+UPDATES = [
+    ("bridge", 123, "board", "board"),
+    ("bridge", 456, "no @**all** ping", "no @" + Z + "**all** ping"),
+]
+
 # (content, expected) for read.indent
 INDENTS = [
     ("one line", "one line"),

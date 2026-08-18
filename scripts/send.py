@@ -156,6 +156,26 @@ def post(as_name, stream, topic, body, files=(), footer=""):
     return payload["id"]
 
 
+def update(as_name, message_id, content):
+    cfg = _ready(as_name)
+    content = strip_persona_mentions(content or "", as_name)
+    content = strip_wildcards(content)
+    limit = api.window(as_name)
+    if len(content) > limit:
+        sys.stderr.write(prompts.OVER_WINDOW_NOTE.format(size=len(content), window=limit) + "\n")
+        raise SystemExit(3)
+    api.check(
+        api.request(
+            cfg,
+            "PATCH",
+            "/api/v1/messages/%d" % int(message_id),
+            {"content": content},
+        ),
+        "PATCH /messages (content)",
+    )
+    return int(message_id)
+
+
 def verb_allowed(as_name):
     """--resolve and --move-to are bridge-only (the topic-verbs ledger grant); every other
     identity is refused before any API call, regardless of AGENT_TEAM_IDENTITY."""
@@ -291,6 +311,28 @@ def _selftest():
         else:
             failed += 1
             print("FAIL verb_allowed(%r) -> %r, wanted %r" % (as_name, got, expected))
+    old_ready, old_window, old_request, old_check = _ready, api.window, api.request, api.check
+    calls = []
+    try:
+        globals()["_ready"] = lambda as_name: {"name": as_name}
+        api.window = lambda as_name: 10000
+        api.request = lambda cfg, method, path, params: calls.append(
+            (cfg, method, path, params)) or {"result": "success"}
+        api.check = lambda payload, what: payload
+        for as_name, message_id, content, expected in cases.UPDATES:
+            got = update(as_name, message_id, content)
+            call = calls.pop(0)
+            wanted = ({"name": as_name}, "PATCH", "/api/v1/messages/%d" % message_id,
+                      {"content": expected})
+            if got == message_id and call == wanted:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL update(%r, %r, %r) -> %r call %r, wanted %r" %
+                      (as_name, message_id, content, got, call, wanted))
+    finally:
+        globals()["_ready"] = old_ready
+        api.window, api.request, api.check = old_window, old_request, old_check
     print("send.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0
 

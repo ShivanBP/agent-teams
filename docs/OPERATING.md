@@ -37,10 +37,10 @@ no remote. Clicking text attachments in the Mac desktop app fails upstream (zuli
 still open 2026-08-18); if one must be opened, use the web app. Summaries and decisions go in
 the body, always.
 
-The share lane is live (2026-08-12): remote wired, first push landed. A document someone
-will open later is committed and pushed
-BEFORE it is linked; the link pins the commit, `.../blob/<sha>/<path>`, never `blob/main/...`
-(HEAD links rot when files move; `git rev-parse HEAD` after the push gives the sha).
+The share lane is live (2026-08-12): remote wired, first push landed. A document going the
+link lane is committed and pushed BEFORE it is linked; the link pins the commit,
+`.../blob/<sha>/<path>`, never `blob/main/...` (HEAD links rot when files move;
+`git rev-parse HEAD` after the push gives the sha).
 Concurrent lanes: `git pull --rebase` before push; on conflict, post the [attach:] fallback
 instead of fighting the rebase mid-wake. Credentials are the ambient `gh auth` already in
 this Mac's keychain, full account scope, not a repo-scoped token as the plan first named:

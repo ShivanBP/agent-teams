@@ -67,6 +67,9 @@ session. Default persona-provider-model-effort assignments live in
 edits to the example are ignored. Config is read once at listener start; after editing the
 live file, run `scripts/restart.sh`. Effort levels translate per provider; unsupported
 combinations such as `agy + xtra` are rejected.
+Arm a deferred restart only as
+`nohup scripts/restart.sh 7200 >> ~/.config/agent-team/logs/deferred-restart.log 2>&1 &`,
+never with `launchctl submit`, which relaunches it after every exit.
 
 A Codex wake runs `sandbox_mode="danger-full-access"` with `approval_policy="never"`, granted
 by Mate 2026-08-13 to match Claude Bob's reach. `workspace-write` hard-denies writes under

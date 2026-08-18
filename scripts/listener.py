@@ -586,7 +586,7 @@ def handle_operator_tag(event, mate_id):
 # --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----
 
 def stalled_wake(lane, now_ts, run=subprocess.run, own_pid=os.getpid):
-    """Return report fields only when a quiet wake log has no TCP-active holder."""
+    """Return report fields when a quiet wake log has no holder or no TCP-active holder."""
     wake_log = runner._wake_log_path(lane)
     try:
         quiet_s = max(0, now_ts - wake_log.stat().st_mtime)
@@ -615,7 +615,8 @@ def stalled_wake(lane, now_ts, run=subprocess.run, own_pid=os.getpid):
         if pid != own_pid():
             pids.append(pid)
     if not pids:
-        return None
+        return {"pid": prompts.NO_PROCESS_PID, "quiet_s": quiet_s,
+                "wake_log": str(wake_log)}
 
     for pid in pids:
         try:

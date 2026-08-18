@@ -181,6 +181,7 @@ def open_fence(text):
 STALLED_WAKE_ALERT = (
     "Stalled wake: lane {lane}; pid {pid}; quiet {quiet_min}m; wake log {wake_log}"
 )
+NO_PROCESS_PID = "none"
 
 BOARD_UPDATE_ALERT = "Board section {section} failed to update; see listener.err.log."
 

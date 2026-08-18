@@ -4,7 +4,13 @@ import argparse
 import re
 import sys
 
-PERSONAS = ("thoth", "bob", "ma'at")
+PERSONAS = ("thoth", "bob", "maat")
+DISPLAY_NAMES = {"maat": "Ma'at"}
+MENTION_NAMES = tuple(dict.fromkeys(PERSONAS + tuple(DISPLAY_NAMES.values())))
+
+
+def display_name(name):
+    return DISPLAY_NAMES.get(name, name.capitalize())
 
 def _frontmatter(path):
     text = path.read_text()

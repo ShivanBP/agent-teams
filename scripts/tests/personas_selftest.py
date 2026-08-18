@@ -29,5 +29,12 @@ def _body():
         else:
             failed += 1
             print("FAIL %s -> names=%r errors=%r" % (label, names, errors))
+    for name, expected in cases.PERSONA_DISPLAY_NAMES:
+        got = display_name(name)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL display_name(%r) -> %r wanted %r" % (name, got, expected))
     print("personas.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

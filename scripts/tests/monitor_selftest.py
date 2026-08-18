@@ -56,7 +56,7 @@ def _body():
         failed += 1
         print("FAIL lane_rows(...) -> %r wanted %r" % (lanes, cases.MONITOR_LANE_EXPECTED))
     lane_table = render_lanes(lanes)
-    if "STUCK" in lane_table and lane_table.count("ma'at") == 2 and "-" in lane_table:
+    if "STUCK" in lane_table and lane_table.count("maat") == 2 and "-" in lane_table:
         passed += 1
     else:
         failed += 1

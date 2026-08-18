@@ -496,7 +496,9 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
             _close_loop(loop_id, dest_channel, dest_topic, prompts.LOOP_BUDGET_REASON.format(budget=loop["budget"]))
             return
         # A kick must mention its persona or the wake never fires; same shape as loops.py's CLI kick.
-        kick_text = prompts.kick_body(prompts.MENTION.format(name=persona_name.capitalize(), body=body), n, loop["budget"])
+        kick_text = prompts.kick_body(
+            prompts.MENTION.format(name=personas.display_name(persona_name), body=body),
+            n, loop["budget"])
         try:
             send_mod.post(constants.OPERATOR_IDENTITY, dest_channel, dest_topic, kick_text)
         except (Exception, SystemExit):

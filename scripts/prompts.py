@@ -127,8 +127,9 @@ def with_memory_frame(memory, wake):
 
 
 def provider_prompt(provider, persona_name, wake, persona, memory=""):
+    import personas
     text = PROVIDER_FRAME.format(
-        provider=provider, persona_name=persona_name.capitalize(), persona=persona)
+        provider=provider, persona_name=personas.display_name(persona_name), persona=persona)
     if provider == "agy":
         text += "\n\n" + AGY_FILE_FRAME
     if memory:

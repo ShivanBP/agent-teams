@@ -208,7 +208,8 @@ def main():
         stream_id, topic, _content = resolve_header(args.as_name, row["header_id"])
         if topic is None:
             ap.error("header %s did not resolve; kick recorded as %d but NOT posted; post by hand" % (row["header_id"], n))
-        body = prompts.MENTION.format(name=args.persona.capitalize(), body=args.body)
+        import personas
+        body = prompts.MENTION.format(name=personas.display_name(args.persona), body=args.body)
         mid = send_mod.post(args.as_name, stream_id, topic, prompts.kick_body(body, n, row["budget"]))
         print(json.dumps({"kick": n, "budget": row["budget"], "message_id": mid}, indent=2))
     elif args.cmd == "list":

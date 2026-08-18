@@ -15,7 +15,7 @@ ATTACH_LINE = re.compile(r"^[ \t]*\[attach:[ \t]*(.+?)[ \t]*\][ \t]*$")
 ZWSP = "\u200b"
 _WILDCARD = re.compile(r"@(_?)\*\*(all|everyone|channel|topic|stream)\*\*")
 _PERSONA_MENTION = re.compile(
-    r"@(\*\*(?:%s)(?:\|\d+)?\*\*)" % "|".join(map(re.escape, personas_mod.PERSONAS)),
+    r"@(\*\*(?:%s)(?:\|\d+)?\*\*)" % "|".join(map(re.escape, personas_mod.MENTION_NAMES)),
     re.IGNORECASE,
 )
 

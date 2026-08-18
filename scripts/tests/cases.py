@@ -32,6 +32,7 @@ WILDCARDS = [
 PERSONA_MENTIONS = [
     ("thoth", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
     ("thoth", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
+    ("thoth", "ask @**Ma'at** to review", "ask @" + Z + "**Ma'at** to review"),
     ("bridge", "kick @**thoth** build", "kick @**thoth** build"),
     ("thoth", "alert @**Soto**", "alert @**Soto**"),
     ("thoth", "@**all** hands", "@**all** hands"),
@@ -427,7 +428,14 @@ PERSONA_FIXTURES = [
      set(), 1),
     ("missing frontmatter",
      [("planner.md", "plain body\n")],
-     set(), 1),
+    set(), 1),
+]
+
+PERSONA_DISPLAY_NAMES = [
+    ("thoth", "Thoth"),
+    ("bob", "Bob"),
+    ("maat", "Ma'at"),
+    ("operator-reply", "Operator-reply"),
 ]
 
 # (persona, identity kwarg, expected memory dir name) for the frame runner._first_prompt builds:
@@ -510,7 +518,7 @@ STATE_SUMMARIES = [
 # (lane, stored session args, error the run raises, expected session_get afterwards) for the
 # wake-failure path. One row: the drop is independent of provider, persona and error type.
 WAKE_SESSION_CLEARED_ON_FAILURE = [
-    ("selftest:wake failure:ma'at",
+    ("selftest:wake failure:maat",
      ("sid-dead", 42, "claude"), RuntimeError("boom"), None),
 ]
 
@@ -588,7 +596,7 @@ FLAG_HOLDER_WAKES = [
 TEST_MATRIX = {
     "thoth": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
     "bob": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
-    "ma'at": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
+    "maat": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
 }
 
 PROVIDER_SELECTIONS = [
@@ -599,10 +607,10 @@ PROVIDER_SELECTIONS = [
     ("thoth", [], {"session_id": "legacy"}, TEST_MATRIX, "claude"),
     ("bob", ["-codex"], {}, TEST_MATRIX, "codex"),
     ("bob", ["-agy"], {}, TEST_MATRIX, "agy"),
-    ("ma'at", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
-    ("ma'at", [], {}, TEST_MATRIX, "opencode"),
-    ("ma'at", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
-    ("ma'at", ["-opencode"], {}, TEST_MATRIX, "opencode"),
+    ("maat", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
+    ("maat", [], {}, TEST_MATRIX, "opencode"),
+    ("maat", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
+    ("maat", ["-opencode"], {}, TEST_MATRIX, "opencode"),
     ("bob", [], {}, TEST_MATRIX, "agy"),
 ]
 
@@ -615,7 +623,7 @@ WAKE_SETTINGS = [
     ("thoth", "codex", None, None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
     ("thoth", "codex", "opus", None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
     ("thoth", "codex", None, "low", TEST_MATRIX, ("gpt-5.6-sol", "low", "low")),
-    ("ma'at", "opencode", None, None, TEST_MATRIX,
+    ("maat", "opencode", None, None, TEST_MATRIX,
      ("fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "high", "high")),
     ("bob", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
 ]
@@ -640,17 +648,17 @@ EFFORT_TRANSLATIONS = [
 ]
 
 MONITOR_INPUT = {
-    "inflight": {"lane": {"persona": "ma'at", "provider": "codex", "topic": "setup"}},
+    "inflight": {"lane": {"persona": "maat", "provider": "codex", "topic": "setup"}},
     "cost_rows": [
         {"persona": "bob", "usd": 0.023},
         {"persona": "bob", "usd": 0.002},
-        {"persona": "ma'at", "usd": 0.008},
+        {"persona": "maat", "usd": 0.008},
     ],
     "kick_rows": [{"persona": "thoth"}, {"persona": "thoth"}],
     "matrix": {
         "thoth": {"provider": "codex"},
         "bob": {"provider": "agy"},
-        "ma'at": {"provider": "opencode"},
+        "maat": {"provider": "opencode"},
     },
 }
 
@@ -659,32 +667,32 @@ MONITOR_EXPECTED = {
               "cost_today": 0.0, "runs_today": 0, "kicks_today": 2},
     "bob": {"provider": "agy", "status": "--", "topic": None,
             "cost_today": 0.025, "runs_today": 2, "kicks_today": 0},
-    "ma'at": {"provider": "codex", "status": "running", "topic": "setup",
-              "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
+    "maat": {"provider": "codex", "status": "running", "topic": "setup",
+             "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
 }
 
 MONITOR_LANE_INPUT = {
     "inflight": {
-        "1:first:ma'at": {"persona": "ma'at", "provider": "codex", "topic": "first",
-                          "ts": 7000, "stream_id": 1, "message_id": 101},
-        "1:second:ma'at": {"persona": "ma'at", "provider": "codex", "topic": "second",
-                           "ts": 9700, "stream_id": 1, "message_id": 102},
+        "1:first:maat": {"persona": "maat", "provider": "codex", "topic": "first",
+                         "ts": 7000, "stream_id": 1, "message_id": 101},
+        "1:second:maat": {"persona": "maat", "provider": "codex", "topic": "second",
+                          "ts": 9700, "stream_id": 1, "message_id": 102},
         "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third",
                         "ts": 9900, "stream_id": 2, "message_id": 103},
     },
     "now_ts": 10000,
-    "log_mtimes": {"1:first:ma'at": 9900, "1:second:ma'at": 9600,
+    "log_mtimes": {"1:first:maat": 9900, "1:second:maat": 9600,
                     "2:third:bob": 9990},
-    "actions": {"1:first:ma'at": "running command",
+    "actions": {"1:first:maat": "running command",
                 "2:third:bob": "writing reply"},
 }
 
 MONITOR_LANE_EXPECTED = [
-    {"lane": "1:first:ma'at", "stream_id": 1, "message_id": 101, "persona": "ma'at",
+    {"lane": "1:first:maat", "stream_id": 1, "message_id": 101, "persona": "maat",
      "provider": "codex", "topic": "first", "running_s": 3000, "idle_s": 100,
      "last_action": "running command", "stuck": True},
-    {"lane": "1:second:ma'at", "stream_id": 1, "message_id": 102,
-     "persona": "ma'at",
+    {"lane": "1:second:maat", "stream_id": 1, "message_id": 102,
+     "persona": "maat",
      "provider": "codex", "topic": "second", "running_s": 300, "idle_s": None,
      "last_action": None, "stuck": False},
     {"lane": "2:third:bob", "stream_id": 2, "message_id": 103, "persona": "bob",

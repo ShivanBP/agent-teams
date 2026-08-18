@@ -117,7 +117,7 @@ def _clip(text, limit):
 
 
 def validate_digest(payload, messages, previous, allow_legacy=False):
-    if not isinstance(payload, dict) or set(payload) != {"summary", "items"}:
+    if not isinstance(payload, dict) or not {"summary", "items"} <= set(payload):
         return None
     if not isinstance(payload["summary"], str) or not payload["summary"].strip() \
             or not isinstance(payload["items"], list):

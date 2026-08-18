@@ -915,11 +915,16 @@ DIGEST_BOUND_CACHED_EXPECTED = {
     "items": [dict(row, source_ts=0) for row in DIGEST_BOUND_EXPECTED["items"]],
 }
 
+DIGEST_ROOTS = [
+    ({"summary": "ok", "items": []}, {"summary": "ok", "items": []}),
+    ({"summary": "ok", "items": [], "extra": 1}, {"summary": "ok", "items": []}),
+    ({"items": []}, None),
+    ({"summary": "ok"}, None),
+]
+
 DIGEST_BAD_ROOTS = [
-    ([], DIGEST_MESSAGES, DIGEST_PREVIOUS),
-    ({"summary": "only"}, DIGEST_MESSAGES, DIGEST_PREVIOUS),
-    ({"summary": "ok", "items": [], "extra": 1}, DIGEST_MESSAGES, DIGEST_PREVIOUS),
-    ({"summary": "", "items": []}, DIGEST_MESSAGES, DIGEST_PREVIOUS),
+    [],
+    {"summary": "", "items": []},
 ]
 
 DIGEST_UNSAFE_TEXT = "@**Bob** [x] _do_ `now`"

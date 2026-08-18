@@ -123,7 +123,17 @@ def _body():
     else:
         failed += 1
         print("FAIL old cached item migration -> %r wanted %r" % (migrated, expected_migrated))
-    if all(validate_digest(*row) is None for row in cases.DIGEST_BAD_ROOTS):
+    roots = [validate_digest(payload, cases.DIGEST_MESSAGES, cases.DIGEST_PREVIOUS)
+             for payload, expected in cases.DIGEST_ROOTS]
+    expected_roots = [expected for payload, expected in cases.DIGEST_ROOTS]
+    if roots == expected_roots:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL validate_digest root schemas -> %r wanted %r" %
+              (roots, expected_roots))
+    if all(validate_digest(payload, cases.DIGEST_MESSAGES, cases.DIGEST_PREVIOUS) is None
+           for payload in cases.DIGEST_BAD_ROOTS):
         passed += 1
     else:
         failed += 1

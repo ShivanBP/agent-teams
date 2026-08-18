@@ -30,11 +30,11 @@ WILDCARDS = [
 
 # (sender, input, expected) for send.strip_persona_mentions
 PERSONA_MENTIONS = [
-    ("chronos", "ask @**hermes** to check", "ask @" + Z + "**hermes** to check"),
-    ("chronos", "@**Hermes|123** here", "@" + Z + "**Hermes|123** here"),
-    ("bridge", "kick @**chronos** build", "kick @**chronos** build"),
-    ("chronos", "alert @**Soto**", "alert @**Soto**"),
-    ("chronos", "@**all** hands", "@**all** hands"),
+    ("thoth", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
+    ("thoth", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
+    ("bridge", "kick @**thoth** build", "kick @**thoth** build"),
+    ("thoth", "alert @**Soto**", "alert @**Soto**"),
+    ("thoth", "@**all** hands", "@**all** hands"),
 ]
 
 # (params, expected form encoding) for api._encode
@@ -510,7 +510,7 @@ STATE_SUMMARIES = [
 # (lane, stored session args, error the run raises, expected session_get afterwards) for the
 # wake-failure path. One row: the drop is independent of provider, persona and error type.
 WAKE_SESSION_CLEARED_ON_FAILURE = [
-    ("selftest:wake failure:quanyin",
+    ("selftest:wake failure:ma'at",
      ("sid-dead", 42, "claude"), RuntimeError("boom"), None),
 ]
 
@@ -586,38 +586,38 @@ FLAG_HOLDER_WAKES = [
 
 # (identity, flags, session row, matrix, expected provider) for listener.provider_for_wake
 TEST_MATRIX = {
-    "chronos": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
-    "hermes": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
-    "quanyin": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
+    "thoth": {"provider": "codex", "model": "gpt-5.6-sol", "effort": "high"},
+    "bob": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
+    "ma'at": {"provider": "opencode", "model": "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "effort": "high"},
 }
 
 PROVIDER_SELECTIONS = [
-    ("chronos", ["-codex"], {}, TEST_MATRIX, "codex"),
-    ("chronos", ["-claude"], {"provider": "codex", "session_id": "c"},
+    ("thoth", ["-codex"], {}, TEST_MATRIX, "codex"),
+    ("thoth", ["-claude"], {"provider": "codex", "session_id": "c"},
      TEST_MATRIX, "claude"),
-    ("chronos", [], {"provider": "codex", "session_id": "c"}, TEST_MATRIX, "codex"),
-    ("chronos", [], {"session_id": "legacy"}, TEST_MATRIX, "claude"),
-    ("hermes", ["-codex"], {}, TEST_MATRIX, "codex"),
-    ("hermes", ["-agy"], {}, TEST_MATRIX, "agy"),
-    ("quanyin", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
-    ("quanyin", [], {}, TEST_MATRIX, "opencode"),
-    ("quanyin", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
-    ("quanyin", ["-opencode"], {}, TEST_MATRIX, "opencode"),
-    ("hermes", [], {}, TEST_MATRIX, "agy"),
+    ("thoth", [], {"provider": "codex", "session_id": "c"}, TEST_MATRIX, "codex"),
+    ("thoth", [], {"session_id": "legacy"}, TEST_MATRIX, "claude"),
+    ("bob", ["-codex"], {}, TEST_MATRIX, "codex"),
+    ("bob", ["-agy"], {}, TEST_MATRIX, "agy"),
+    ("ma'at", ["-agy", "-claude", "-codex"], {}, TEST_MATRIX, "codex"),
+    ("ma'at", [], {}, TEST_MATRIX, "opencode"),
+    ("ma'at", [], {"provider": "claude", "session_id": "c"}, TEST_MATRIX, "claude"),
+    ("ma'at", ["-opencode"], {}, TEST_MATRIX, "opencode"),
+    ("bob", [], {}, TEST_MATRIX, "agy"),
 ]
 
 # (identity, provider, model flag, effort flag, matrix, expected settings or exception)
 WAKE_SETTINGS = [
-    ("chronos", "claude", None, None, TEST_MATRIX, (None, "high", "high")),
-    ("chronos", "claude", "fable", None, TEST_MATRIX, ("fable", "medium", "mid")),
-    ("chronos", "claude", "sonnet", None, TEST_MATRIX, ("sonnet", "high", "high")),
-    ("chronos", "claude", "opus", None, TEST_MATRIX, ("opus", "high", "high")),
-    ("chronos", "codex", None, None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
-    ("chronos", "codex", "opus", None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
-    ("chronos", "codex", None, "low", TEST_MATRIX, ("gpt-5.6-sol", "low", "low")),
-    ("quanyin", "opencode", None, None, TEST_MATRIX,
+    ("thoth", "claude", None, None, TEST_MATRIX, (None, "high", "high")),
+    ("thoth", "claude", "fable", None, TEST_MATRIX, ("fable", "medium", "mid")),
+    ("thoth", "claude", "sonnet", None, TEST_MATRIX, ("sonnet", "high", "high")),
+    ("thoth", "claude", "opus", None, TEST_MATRIX, ("opus", "high", "high")),
+    ("thoth", "codex", None, None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
+    ("thoth", "codex", "opus", None, TEST_MATRIX, ("gpt-5.6-sol", "high", "high")),
+    ("thoth", "codex", None, "low", TEST_MATRIX, ("gpt-5.6-sol", "low", "low")),
+    ("ma'at", "opencode", None, None, TEST_MATRIX,
      ("fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "high", "high")),
-    ("hermes", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
+    ("bob", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
 ]
 
 EFFORT_TRANSLATIONS = [
@@ -640,54 +640,54 @@ EFFORT_TRANSLATIONS = [
 ]
 
 MONITOR_INPUT = {
-    "inflight": {"lane": {"persona": "quanyin", "provider": "codex", "topic": "setup"}},
+    "inflight": {"lane": {"persona": "ma'at", "provider": "codex", "topic": "setup"}},
     "cost_rows": [
-        {"persona": "hermes", "usd": 0.023},
-        {"persona": "hermes", "usd": 0.002},
-        {"persona": "quanyin", "usd": 0.008},
+        {"persona": "bob", "usd": 0.023},
+        {"persona": "bob", "usd": 0.002},
+        {"persona": "ma'at", "usd": 0.008},
     ],
-    "kick_rows": [{"persona": "chronos"}, {"persona": "chronos"}],
+    "kick_rows": [{"persona": "thoth"}, {"persona": "thoth"}],
     "matrix": {
-        "chronos": {"provider": "codex"},
-        "hermes": {"provider": "agy"},
-        "quanyin": {"provider": "opencode"},
+        "thoth": {"provider": "codex"},
+        "bob": {"provider": "agy"},
+        "ma'at": {"provider": "opencode"},
     },
 }
 
 MONITOR_EXPECTED = {
-    "chronos": {"provider": "codex", "status": "--", "topic": None,
-                "cost_today": 0.0, "runs_today": 0, "kicks_today": 2},
-    "hermes": {"provider": "agy", "status": "--", "topic": None,
-               "cost_today": 0.025, "runs_today": 2, "kicks_today": 0},
-    "quanyin": {"provider": "codex", "status": "running", "topic": "setup",
-                "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
+    "thoth": {"provider": "codex", "status": "--", "topic": None,
+              "cost_today": 0.0, "runs_today": 0, "kicks_today": 2},
+    "bob": {"provider": "agy", "status": "--", "topic": None,
+            "cost_today": 0.025, "runs_today": 2, "kicks_today": 0},
+    "ma'at": {"provider": "codex", "status": "running", "topic": "setup",
+              "cost_today": 0.008, "runs_today": 1, "kicks_today": 0},
 }
 
 MONITOR_LANE_INPUT = {
     "inflight": {
-        "1:first:quanyin": {"persona": "quanyin", "provider": "codex", "topic": "first",
-                            "ts": 7000, "stream_id": 1, "message_id": 101},
-        "1:second:quanyin": {"persona": "quanyin", "provider": "codex", "topic": "second",
-                             "ts": 9700, "stream_id": 1, "message_id": 102},
-        "2:third:hermes": {"persona": "hermes", "provider": "claude", "topic": "third",
-                           "ts": 9900, "stream_id": 2, "message_id": 103},
+        "1:first:ma'at": {"persona": "ma'at", "provider": "codex", "topic": "first",
+                          "ts": 7000, "stream_id": 1, "message_id": 101},
+        "1:second:ma'at": {"persona": "ma'at", "provider": "codex", "topic": "second",
+                           "ts": 9700, "stream_id": 1, "message_id": 102},
+        "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third",
+                        "ts": 9900, "stream_id": 2, "message_id": 103},
     },
     "now_ts": 10000,
-    "log_mtimes": {"1:first:quanyin": 9900, "1:second:quanyin": 9600,
-                    "2:third:hermes": 9990},
-    "actions": {"1:first:quanyin": "running command",
-                "2:third:hermes": "writing reply"},
+    "log_mtimes": {"1:first:ma'at": 9900, "1:second:ma'at": 9600,
+                    "2:third:bob": 9990},
+    "actions": {"1:first:ma'at": "running command",
+                "2:third:bob": "writing reply"},
 }
 
 MONITOR_LANE_EXPECTED = [
-    {"lane": "1:first:quanyin", "stream_id": 1, "message_id": 101, "persona": "quanyin",
+    {"lane": "1:first:ma'at", "stream_id": 1, "message_id": 101, "persona": "ma'at",
      "provider": "codex", "topic": "first", "running_s": 3000, "idle_s": 100,
      "last_action": "running command", "stuck": True},
-    {"lane": "1:second:quanyin", "stream_id": 1, "message_id": 102,
-     "persona": "quanyin",
+    {"lane": "1:second:ma'at", "stream_id": 1, "message_id": 102,
+     "persona": "ma'at",
      "provider": "codex", "topic": "second", "running_s": 300, "idle_s": None,
      "last_action": None, "stuck": False},
-    {"lane": "2:third:hermes", "stream_id": 2, "message_id": 103, "persona": "hermes",
+    {"lane": "2:third:bob", "stream_id": 2, "message_id": 103, "persona": "bob",
      "provider": "claude", "topic": "third", "running_s": 100, "idle_s": 10,
      "last_action": "writing reply", "stuck": False},
 ]

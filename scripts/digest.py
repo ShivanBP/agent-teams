@@ -40,12 +40,12 @@ def fetch_delta(as_name, stream_id, channel, topic, current):
     return kept, next_anchor, dropped
 
 
-def model_call(previous, messages):
+def model_call(previous, messages, run_model_fn=todo.run_model):
     prompt = prompts.TOPIC_DIGEST.format(
         previous=json.dumps(previous or {}, ensure_ascii=False, sort_keys=True),
         messages=json.dumps(messages, ensure_ascii=False, sort_keys=True),
     )
-    return todo.run_model(prompt)
+    return run_model_fn(prompt, lane="digest")
 
 
 def validate_digest(payload, messages, previous):
@@ -139,6 +139,14 @@ def _selftest():
     import tests.cases as cases
 
     passed = failed = 0
+    model_calls = []
+    model_call({}, [], run_model_fn=lambda prompt, lane: model_calls.append((prompt, lane)) or {})
+    if len(model_calls) == 1 and model_calls[0][1] == "digest" \
+            and "Prior digest:\n{}" in model_calls[0][0]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL model_call did not use the digest cost lane: %r" % (model_calls,))
     got = validate_digest(*cases.DIGEST_FILTER_INPUT)
     if got == cases.DIGEST_FILTER_EXPECTED:
         passed += 1

@@ -85,13 +85,33 @@ def _model_env():
 
 def model_command(prompt):
     return [
-        "claude", "-p", "--model", "sonnet", "--output-format", "json",
+        "claude", "-p", "--model", constants.TODO_SWEEP_MODEL, "--output-format", "json",
         "--tools", "", "--safe-mode", "--disable-slash-commands",
         "--strict-mcp-config", "--mcp-config", "{}", "--no-session-persistence", prompt,
     ]
 
 
-def run_model(prompt, run=subprocess.run, cwd=None):
+def _record_cost(envelope, lane, cost_fn):
+    usage = envelope.get("usage") or {}
+    row = {
+        "persona": constants.OPERATOR_IDENTITY,
+        "lane": lane,
+        "usd": float(envelope.get("total_cost_usd") or 0.0),
+        "turns": int(envelope.get("num_turns") or 0),
+        "cache_read": usage.get("cache_read_input_tokens", 0),
+        "cache_creation": usage.get("cache_creation_input_tokens", 0),
+        "input_tokens": usage.get("input_tokens", 0),
+        "provider": "claude",
+        "model": constants.TODO_SWEEP_MODEL,
+        "effort": None,
+    }
+    for key in ("output_tokens", "thinking_tokens", "total_tokens"):
+        if key in usage:
+            row[key] = usage[key]
+    cost_fn(row)
+
+
+def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cost_append):
     def invoke(path):
         proc = run(
             model_command(prompt), cwd=path, env=_model_env(), capture_output=True,
@@ -102,6 +122,8 @@ def run_model(prompt, run=subprocess.run, cwd=None):
         result = envelope.get("result")
         if not isinstance(result, str):
             raise ValueError("todo sweep model returned no JSON result string")
+        if lane is not None:
+            _record_cost(envelope, lane, cost_fn)
         return json.loads(result)
 
     if cwd is not None:
@@ -110,10 +132,10 @@ def run_model(prompt, run=subprocess.run, cwd=None):
         return invoke(path)
 
 
-def model_call(messages, run=subprocess.run, cwd=None):
+def model_call(messages, run=subprocess.run, cwd=None, cost_fn=store.cost_append):
     prompt = prompts.TODO_SWEEP.format(
         messages=json.dumps(messages, ensure_ascii=False, sort_keys=True))
-    return run_model(prompt, run=run, cwd=cwd)
+    return run_model(prompt, run=run, cwd=cwd, lane="todo", cost_fn=cost_fn)
 
 
 def existing_titles(as_name=constants.OPERATOR_IDENTITY):
@@ -255,7 +277,10 @@ def _selftest():
 
     class _Proc:
         returncode = 0
-        stdout = json.dumps({"result": "[]"})
+        stdout = json.dumps({
+            "result": "[]", "total_cost_usd": 0.012, "num_turns": 1,
+            "usage": {"input_tokens": 12, "output_tokens": 3},
+        })
         stderr = ""
 
     def run_stub(command, **kwargs):
@@ -263,10 +288,13 @@ def _selftest():
         invoked["empty"] = os.listdir(kwargs["cwd"]) == []
         return _Proc()
 
-    model_rows = model_call([], run=run_stub)
+    costs = []
+    model_rows = model_call([], run=run_stub, cost_fn=costs.append)
     model_cwd = invoked.get("cwd", "")
     if model_rows == [] and invoked.get("empty") and str(constants.REPO_DIR) not in model_cwd \
-            and not any("ZULIP" in key for key in invoked.get("env", {})):
+            and not any("ZULIP" in key for key in invoked.get("env", {})) \
+            and len(costs) == 1 and costs[0]["lane"] == "todo" \
+            and costs[0]["usd"] == 0.012 and costs[0]["output_tokens"] == 3:
         passed += 1
     else:
         failed += 1

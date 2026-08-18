@@ -593,6 +593,33 @@ MONITOR_EXPECTED = {
                "cost_today": 0.0, "runs_today": 0, "kicks_today": 0},
 }
 
+MONITOR_LANE_INPUT = {
+    "inflight": {
+        "1:first:jan": {"persona": "jan", "provider": "codex", "topic": "first", "ts": 7000},
+        "1:second:jan": {"persona": "jan", "provider": "codex", "topic": "second", "ts": 9700},
+        "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third", "ts": 9900},
+    },
+    "now_ts": 10000,
+    "log_mtimes": {"1:first:jan": 9900, "1:second:jan": 9600, "2:third:bob": 9990},
+}
+
+MONITOR_LANE_EXPECTED = [
+    {"lane": "1:first:jan", "persona": "jan", "provider": "codex", "topic": "first",
+     "running_s": 3000, "idle_s": 100, "stuck": True},
+    {"lane": "1:second:jan", "persona": "jan", "provider": "codex", "topic": "second",
+     "running_s": 300, "idle_s": None, "stuck": False},
+    {"lane": "2:third:bob", "persona": "bob", "provider": "claude", "topic": "third",
+     "running_s": 100, "idle_s": None, "stuck": False},
+]
+
+MONITOR_AGES = [
+    (None, "-"),
+    (0, "0m"),
+    (3599, "59m"),
+    (3600, "1h 00m"),
+    (90000, "1d 01h"),
+]
+
 # (with-narrow response payload, expected (stream_id, topic, content)) for loops._extract_location
 WITH_NARROW = [
     ({"result": "success", "messages": [{"stream_id": 7, "subject": "phase 3 loop", "content": "kick off"}]},

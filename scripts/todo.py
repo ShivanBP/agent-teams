@@ -24,6 +24,7 @@ def message_record(channel, stream_id, message, site):
         "topic": topic,
         "sender": message.get("sender_full_name") or "",
         "content": message.get("content") or "",
+        "timestamp": message.get("timestamp"),
         "permalink": api.permalink(site, stream_id, channel, topic, message["id"]),
     }
 
@@ -122,6 +123,16 @@ def _selftest():
     import tests.cases as cases
 
     passed = failed = 0
+    record = message_record(
+        "setup", 7,
+        {"id": 21, "subject": "topic", "timestamp": 210, "sender_full_name": "Bob"},
+        "https://example")
+    if record["timestamp"] == 210 and record["id"] == 21 \
+            and record["permalink"].endswith("/near/21"):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL message record lost its source timestamp: %r" % record)
     model_json_ok = True
     for raw, expected in cases.TODO_MODEL_JSON:
         try:

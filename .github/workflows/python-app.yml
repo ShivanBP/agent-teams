@@ -1,0 +1,21 @@
+  name: selftests
+
+  on:
+    push:
+    pull_request:
+
+  jobs:
+    selftests:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-python@v5
+          with:
+            python-version: "3.13"
+        - name: Run offline selftests
+          run: |
+            fail=0
+            for f in scripts/*.py; do
+              python3 "$f" --selftest || fail=1
+            done
+            exit $fail

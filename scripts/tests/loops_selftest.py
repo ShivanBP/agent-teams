@@ -12,6 +12,9 @@ def run(module):
 
 
 def _body():
+    import contextlib
+    import io
+    import os
     import store
     import tests.cases as cases
 
@@ -108,6 +111,47 @@ def _body():
         else:
             failed += 1
             print("FAIL get on a missing id returned something")
+
+        # fire_kick's pre-flight: every refusal leaves the ledger untouched. resolve_header is
+        # stubbed both ways, so no row reaches the network, and the identity-mismatch row exits
+        # through api.enforce_identity rather than the refuse hook.
+        row3 = open_loop("workshop", "phase 3 fire_kick", 555, budget=5, state_name=test_state)
+        test_loop_ids.append(row3["id"])
+
+        class _Refused(Exception):
+            pass
+
+        def _refuse(message):
+            raise _Refused(message)
+
+        saved_resolve = globals()["resolve_header"]
+        saved_identity = os.environ.get("AGENT_TEAM_IDENTITY")
+        try:
+            for label, persona, as_name, identity, resolves in cases.FIRE_KICK_REFUSALS:
+                globals()["resolve_header"] = (lambda *a, **k: (1, "t", "")) if resolves else (
+                    lambda *a, **k: (None, None, None))
+                if identity is None:
+                    os.environ.pop("AGENT_TEAM_IDENTITY", None)
+                else:
+                    os.environ["AGENT_TEAM_IDENTITY"] = identity
+                try:
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        fire_kick(row3["id"], persona, "body", as_name, _refuse, state_name=test_state)
+                    refused = False
+                except (_Refused, SystemExit):
+                    refused = True
+                kicks = get(row3["id"], test_state)["kicks"]
+                if refused and kicks == 0:
+                    passed += 1
+                else:
+                    failed += 1
+                    print("FAIL fire_kick %s -> refused=%r kicks=%r wanted True, 0"
+                          % (label, refused, kicks))
+        finally:
+            globals()["resolve_header"] = saved_resolve
+            os.environ.pop("AGENT_TEAM_IDENTITY", None)
+            if saved_identity is not None:
+                os.environ["AGENT_TEAM_IDENTITY"] = saved_identity
     finally:
         if test_path.is_file():
             test_path.unlink()

@@ -15,6 +15,7 @@ import time
 
 import api
 import constants
+import digest
 import loops
 import monitor
 import personas
@@ -205,6 +206,13 @@ def _post_at_current_location(identity, message_id, channel, topic, body, footer
         log.exception("current-location refetch failed for message %s; using wake-time lane", message_id)
     send_mod.post(identity, post_channel, post_topic, body, footer=footer)
     return post_channel, post_topic
+
+
+def refresh_topic_digest(identity, channel, topic):
+    stream_id = api.stream_id(identity, channel)
+    if stream_id is not None:
+        return digest.refresh_topic(identity, stream_id, channel, topic)
+    return None
 
 
 def is_tag_stale(msg_timestamp, now_ts, max_age_min):
@@ -412,6 +420,10 @@ def handle_wake(identity, event, flag_holder_ids):
                 except (Exception, SystemExit):
                     log.exception("failed to post the wake-failure note for lane %s", lane)
             else:
+                try:
+                    refresh_topic_digest(identity, post_channel, post_topic)
+                except (Exception, SystemExit):
+                    log.exception("topic digest refresh failed for lane %s", lane)
                 # Rail A: only after the reply landed, and its own failures never read back as a
                 # failed wake (they are logged and swallowed inside handle_rail_a itself). Current
                 # topic goes to the loop lookup too, so a rename doesn't miss the loop.
@@ -1036,6 +1048,20 @@ def _selftest():
     else:
         failed += 1
         print("FAIL sweep thread startup -> %r" % (got_threads,))
+
+    digest_calls = []
+    old_stream_id, old_refresh = api.stream_id, digest.refresh_topic
+    try:
+        api.stream_id = lambda identity, channel: 7
+        digest.refresh_topic = lambda *args: digest_calls.append(args) or "ok"
+        got_digest = refresh_topic_digest("bob", "setup", "topic")
+    finally:
+        api.stream_id, digest.refresh_topic = old_stream_id, old_refresh
+    if got_digest == "ok" and digest_calls == [("bob", 7, "setup", "topic")]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL post-wake digest trigger -> %r calls=%r" % (got_digest, digest_calls))
 
     print("listener.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

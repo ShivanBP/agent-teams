@@ -20,7 +20,7 @@ import store
 log = logging.getLogger("agent-team.todo")
 
 
-def _record(channel, stream_id, message, site):
+def message_record(channel, stream_id, message, site):
     topic = message.get("subject") or ""
     return {
         "id": int(message["id"]),
@@ -64,7 +64,7 @@ def harvest(cursor=None, as_name=constants.OPERATOR_IDENTITY):
             message_id = int(message["id"])
             if cursor is not None and message_id <= int(cursor):
                 continue
-            messages.append(_record(channel, stream_id, message, cfg["site"]))
+            messages.append(message_record(channel, stream_id, message, cfg["site"]))
             next_cursor = max(next_cursor, message_id)
     kept, dropped = cap_messages(messages)
     if dropped:
@@ -91,10 +91,7 @@ def model_command(prompt):
     ]
 
 
-def model_call(messages, run=subprocess.run, cwd=None):
-    prompt = prompts.TODO_SWEEP.format(
-        messages=json.dumps(messages, ensure_ascii=False, sort_keys=True))
-
+def run_model(prompt, run=subprocess.run, cwd=None):
     def invoke(path):
         proc = run(
             model_command(prompt), cwd=path, env=_model_env(), capture_output=True,
@@ -111,6 +108,12 @@ def model_call(messages, run=subprocess.run, cwd=None):
         return invoke(cwd)
     with tempfile.TemporaryDirectory(prefix="agent-team-todo-") as path:
         return invoke(path)
+
+
+def model_call(messages, run=subprocess.run, cwd=None):
+    prompt = prompts.TODO_SWEEP.format(
+        messages=json.dumps(messages, ensure_ascii=False, sort_keys=True))
+    return run_model(prompt, run=run, cwd=cwd)
 
 
 def existing_titles(as_name=constants.OPERATOR_IDENTITY):
@@ -206,6 +209,11 @@ def sweep_thread(interval=constants.TODO_SWEEP_MIN * 60):
             run_once()
         except (Exception, SystemExit):
             log.exception("todo sweep pass failed")
+        try:
+            import digest
+            digest.sweep_once()
+        except (Exception, SystemExit):
+            log.exception("digest sweep pass failed")
         time.sleep(interval)
 
 

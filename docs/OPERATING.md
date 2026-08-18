@@ -47,6 +47,12 @@ that credential predates this plan and is already reachable by any Bash-holding 
 the share lane narrows nothing. Accepted state unless Mate rules otherwise; the reopen
 trigger is the first bad push.
 
+What that credential does not carry is the settings. Main is protected as of 2026-08-18,
+required check `selftests` and admins enforced, and takes no direct push from anyone, Mate
+included; public changes land through a PR that merges itself on green. Repository settings,
+branch protection among them, are capability grants: they change from Mate's seat only, never
+from a wake, the admin-scoped `gh` notwithstanding.
+
 ## Permissions ledger
 
 This fleet runs headless on one operator's Mac, under the single user account the personas

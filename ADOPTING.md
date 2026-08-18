@@ -79,6 +79,29 @@ git status --short
 git --git-dir=.private/.git --work-tree=. status --short
 ```
 
+## Protect the public repository
+
+The human's seat, not an agent's: repository settings are capability grants, and a wake does
+not grant itself capabilities even where `gh` is authenticated with admin. Skip this and the
+landing ritual is advisory: with nothing required, `gh pr merge --auto` merges on the spot,
+before the checks run.
+
+In the fork's GitHub settings, allow auto-merge and restrict merges to rebase. Then protect
+`main` with the required status check `selftests`, the job key from the selftests workflow
+rather than its file name; enforce it for admins, require zero approvals, leave force pushes
+off, and do not require branches to be up to date, which would stall auto-merge whenever two
+land at once. Make `gh` resolve on the PATH a wake inherits, which on a Homebrew Mac means
+linking `/opt/homebrew/bin/gh` into `~/.local/bin`: a wake's PATH carries the latter and not
+the former.
+
+Read the settings back rather than trusting the clicks:
+
+```sh
+gh api repos/<owner>/<repo> --jq '{auto: .allow_auto_merge, rebase: .allow_rebase_merge}'
+gh api repos/<owner>/<repo>/branches/main/protection \
+  --jq '{checks: .required_status_checks.contexts, admins: .enforce_admins.enabled}'
+```
+
 ## Prepare the runtime
 
 Create `~/.config/agent-team/` with `logs/` and `state/`. Put `bridge.zuliprc` there, plus

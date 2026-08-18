@@ -164,7 +164,7 @@ def _todo_key(row):
     return row.get("channel"), store.normalize_topic(row.get("name"))
 
 
-def unresolved_topics(as_name=constants.OPERATOR_IDENTITY, stream_id_fn=None,
+def unresolved_topics(as_name=constants.BRIDGE_IDENTITY, stream_id_fn=None,
                       topics_fn=None, load_fn=None):
     stream_id_fn = stream_id_fn or api.stream_id
     topics_fn = topics_fn or api.topics
@@ -192,7 +192,7 @@ def unresolved_topics(as_name=constants.OPERATOR_IDENTITY, stream_id_fn=None,
     return rows
 
 
-def parked_topics(as_name=constants.OPERATOR_IDENTITY, topics=None,
+def parked_topics(as_name=constants.BRIDGE_IDENTITY, topics=None,
                   load_fn=None, mutate_fn=None):
     load_fn = load_fn or store.load
     mutate_fn = mutate_fn or store.mutate
@@ -223,7 +223,7 @@ def _topic_match(channel, topic, topics):
                      (channel, topic, ", ".join(nearest) if nearest else "none"))
 
 
-def set_parked(channel, topic, parked, as_name=constants.OPERATOR_IDENTITY,
+def set_parked(channel, topic, parked, as_name=constants.BRIDGE_IDENTITY,
                topics=None, mutate_fn=None, now_ts=None):
     topics = unresolved_topics(as_name) if topics is None else topics
     row = _topic_match(channel.strip(), topic.strip(), topics)
@@ -361,13 +361,13 @@ def _render_parked(rows, lane_map):
 
 
 def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
-                 as_name=constants.OPERATOR_IDENTITY, now_ts=None, parked=None):
+                 as_name=constants.BRIDGE_IDENTITY, now_ts=None, parked=None):
     return "\n\n".join(content for _, content in _board_sections(
         lanes, persona_rows, todos, digests, as_name, now_ts, parked))
 
 
 def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
-                    as_name=constants.OPERATOR_IDENTITY, now_ts=None, parked=None):
+                    as_name=constants.BRIDGE_IDENTITY, now_ts=None, parked=None):
     now_ts = time.time() if now_ts is None else now_ts
     lanes = lane_rows() if lanes is None else lanes
     persona_rows = snapshot() if persona_rows is None else persona_rows
@@ -415,7 +415,7 @@ def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
 
 
 def board_parts(limit, lanes=None, persona_rows=None, todos=None, digests=None,
-                as_name=constants.OPERATOR_IDENTITY, now_ts=None, force_split=False,
+                as_name=constants.BRIDGE_IDENTITY, now_ts=None, force_split=False,
                 parked=None):
     sections = _board_sections(lanes, persona_rows, todos, digests, as_name, now_ts, parked)
     combined = "\n\n".join(content for _, content in sections)
@@ -465,7 +465,7 @@ def _board_failed(as_name, state_name, section):
         store.mutate(state_name, clear)
 
 
-def update_board(as_name=constants.OPERATOR_IDENTITY, content=None, contents=None):
+def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None):
     split_live = any(store.load(constants.BOARD_STATE_KEYS[name]).get("message_id")
                      for name in ("workshop", "domains"))
     if contents is None:
@@ -500,7 +500,7 @@ def update_board(as_name=constants.OPERATOR_IDENTITY, content=None, contents=Non
 
 
 def refresh_board(channel=None, topic=None, digests=False,
-                  as_name=constants.OPERATOR_IDENTITY, topics=None,
+                  as_name=constants.BRIDGE_IDENTITY, topics=None,
                   refresh_fn=None, sweep_fn=None, update_fn=None):
     refresh_fn = refresh_fn or digest.refresh_topic
     sweep_fn = sweep_fn or digest.sweep_once

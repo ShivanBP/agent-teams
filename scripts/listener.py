@@ -30,7 +30,7 @@ import todo
 
 log = logging.getLogger("agent-team.listener")
 
-IDENTITIES = list(personas.PERSONAS) + [constants.OPERATOR_IDENTITY]
+IDENTITIES = list(personas.PERSONAS) + [constants.BRIDGE_IDENTITY]
 
 _USER_IDS = {}
 _USER_IDS_LOCK = threading.Lock()
@@ -165,7 +165,7 @@ def _close_loop(loop_id, channel, topic, reason):
     branch shared this shape before extraction."""
     loops.close(loop_id)
     try:
-        send_mod.post(constants.OPERATOR_IDENTITY, channel, topic,
+        send_mod.post(constants.BRIDGE_IDENTITY, channel, topic,
                        prompts.LOOP_BUDGET_OUT.format(reason=reason, mate=mate_mention()))
     except (Exception, SystemExit):
         log.exception("failed to post loop-close line for loop %s", loop_id)
@@ -212,9 +212,9 @@ def _post_operator_failure(template, exc, channel, topic, message_id=None):
     body = template.format(reason=reason)
     try:
         if message_id is None:
-            send_mod.post(constants.OPERATOR_IDENTITY, channel, topic, body)
+            send_mod.post(constants.BRIDGE_IDENTITY, channel, topic, body)
         else:
-            _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, body)
+            _post_at_current_location(constants.BRIDGE_IDENTITY, message_id, channel, topic, body)
     except (Exception, SystemExit):
         log.exception("failed to post operator failure notice")
 
@@ -275,13 +275,13 @@ def _resolve_user_ids(identity):
         _USER_IDS["flag_holder_ids"] = frozenset(holder_ids)
 
 
-def mate_user_id(identity=constants.OPERATOR_IDENTITY):
+def mate_user_id(identity=constants.BRIDGE_IDENTITY):
     """Resolve and cache the operator's Rail B id alongside the flag-holder id set."""
     _resolve_user_ids(identity)
     return _USER_IDS["mate_id"]
 
 
-def flag_holder_user_ids(identity=constants.OPERATOR_IDENTITY):
+def flag_holder_user_ids(identity=constants.BRIDGE_IDENTITY):
     """Resolve and cache the user ids whose per-message flags apply."""
     _resolve_user_ids(identity)
     return _USER_IDS["flag_holder_ids"]
@@ -462,7 +462,7 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
     budget floor is checked against the ledger before the continuation is even spawned (invariant);
     at budget the loop closes without a run. Otherwise the operator continuation decides kick or
     close, and a reply that fails to parse leaves the loop untouched (never forge a kick)."""
-    loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+    loop = loops.loop_for_lane(constants.BRIDGE_IDENTITY, stream_id, topic)
     if loop is None:
         return
     loop_id = loop["id"]
@@ -494,7 +494,7 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
         rail = constants.rail_defaults("operator")
         result = runner.run("operator", brief, provider=rail["provider"], model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
-                            identity=constants.OPERATOR_IDENTITY)
+                            identity=constants.BRIDGE_IDENTITY)
     except (Exception, SystemExit) as exc:
         log.exception("operator continuation run failed for loop %s", loop_id)
         _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc, dest_channel, dest_topic)
@@ -502,7 +502,7 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
     _append_cost("operator", dest_topic, result, rail["model"], rail["effort"])
     decision = parse_operator_decision(result.reply)
     if decision is None:
-        log.info("operator reply for loop %s did not parse to a decision; loop left untouched; reply was: %r",
+        log.info("continuation reply for loop %s did not parse to a decision; loop left untouched; reply was: %r",
                  loop_id, (result.reply or "")[:300])
         return
 
@@ -522,7 +522,7 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
             prompts.MENTION.format(name=personas.display_name(persona_name), body=body),
             n, loop["budget"])
         try:
-            send_mod.post(constants.OPERATOR_IDENTITY, dest_channel, dest_topic, kick_text)
+            send_mod.post(constants.BRIDGE_IDENTITY, dest_channel, dest_topic, kick_text)
         except (Exception, SystemExit):
             log.exception("kick post failed for loop %s (ledger already advanced to %d/%d)", loop_id, n, loop["budget"])
     elif decision[0] == "close":
@@ -530,10 +530,10 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
         _close_loop(loop_id, dest_channel, dest_topic, reason)
 
 
-# --- Rail B: the operator tags the operator bot directly -----------------------------------------
+# --- Rail B: the operator tags the bridge directly -----------------------------------------
 
 def handle_operator_tag(event, mate_id):
-    """A message event on the operator identity with the mentioned flag: proven to be from the
+    """A message event on the bridge identity with the mentioned flag: proven to be from the
     operator by user id, within TAG_MAX_AGE_MIN of the message timestamp, or it is skipped and
     logged, never answered late and never answered on a bot's say-so."""
     msg = event.get("message") or {}
@@ -557,19 +557,19 @@ def handle_operator_tag(event, mate_id):
 
     # eyes means accepted and running, same as the wake path; a dropped tag gets none.
     try:
-        send_mod.react(constants.OPERATOR_IDENTITY, message_id, constants.EMOJI_RECEIPT)
+        send_mod.react(constants.BRIDGE_IDENTITY, message_id, constants.EMOJI_RECEIPT)
     except (Exception, SystemExit):
         log.exception("react receipt failed for operator tag %s", message_id)
 
-    loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+    loop = loops.loop_for_lane(constants.BRIDGE_IDENTITY, stream_id, topic)
     loop_note = ""
     if loop is not None:
         loop_note = prompts.LOOP_NOTE.format(loop_id=loop["id"], n=loop["kicks"], budget=loop["budget"])
 
-    record, _ = build_delta_record(constants.OPERATOR_IDENTITY, channel, topic, None)
+    record, _ = build_delta_record(constants.BRIDGE_IDENTITY, channel, topic, None)
     # the tag message is the id the seat opens a loop against: it is the header, never one of
     # Bridge's own posts.
-    brief = prompts.OPERATOR_REPLY_BRIEF.format(message=content.strip(), record=record or "",
+    brief = prompts.BRIDGE_BRIEF.format(message=content.strip(), record=record or "",
                                                 loop_note=loop_note, message_id=message_id,
                                                 state=prompts.state_block(store.state_summary()))
     try:
@@ -578,17 +578,17 @@ def handle_operator_tag(event, mate_id):
         rail = constants.rail_defaults("bridge")
         result = runner.run("bridge", brief, provider=rail["provider"], model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
-                            identity=constants.OPERATOR_IDENTITY)
+                            identity=constants.BRIDGE_IDENTITY)
         _append_cost("bridge", topic, result, rail["model"], rail["effort"])
         # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
         # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
         # The footer stamps what the runner was told, in the fleet's effort word, same as a wake's.
-        _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, result.reply,
+        _post_at_current_location(constants.BRIDGE_IDENTITY, message_id, channel, topic, result.reply,
                                    prompts.wake_footer(result.provider, rail["model"], rail["effort"],
                                                        result.session_id, result.degraded))
     except (Exception, SystemExit) as exc:
         log.exception("bridge seat run failed for tag message %s", message_id)
-        _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, exc, channel, topic, message_id)
+        _post_operator_failure(prompts.BRIDGE_REPLY_FAILED, exc, channel, topic, message_id)
 
 
 # --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----
@@ -655,7 +655,7 @@ def stall_sweep_once(now_ts=None):
         stream_id = info.get("stream_id")
         topic = info.get("topic")
         if stream_id is not None and topic is not None:
-            loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
+            loop = loops.loop_for_lane(constants.BRIDGE_IDENTITY, stream_id, topic)
             if loop is not None and loop.get("status") == loops.STATUS_OPEN:
                 loops.pause(loop["id"])
                 log.info("paused loop %s: stall on lane %s", loop["id"], lane)
@@ -664,7 +664,7 @@ def stall_sweep_once(now_ts=None):
 
     for lane, hit in alerts:
         try:
-            send_mod.post(constants.OPERATOR_IDENTITY, constants.STATUS_STREAM, constants.ALERTS_TOPIC,
+            send_mod.post(constants.BRIDGE_IDENTITY, constants.STATUS_STREAM, constants.ALERTS_TOPIC,
                            prompts.STALLED_WAKE_ALERT.format(
                                lane=lane, pid=hit["pid"], quiet_min=int(hit["quiet_s"] // 60),
                                wake_log=hit["wake_log"]))
@@ -710,7 +710,7 @@ def operator_tag_worker(event, mate_id):
 # --- catch-up: backfill mentions missed while the daemon was down --------------------------------
 
 def backfill(identity, mate_id, flag_holder_ids, persona_emails):
-    """Covers personas and the operator identity: a queue re-registration gap can drop a Rail B
+    """Covers personas and the bridge identity: a queue re-registration gap can drop a Rail B
     tag as silently as a persona wake, and handle_operator_tag's staleness guard makes replaying
     an old tag here safe (it skips and logs rather than answering late)."""
     last_id = store.seen_get(identity)
@@ -736,7 +736,7 @@ def backfill(identity, mate_id, flag_holder_ids, persona_emails):
             continue
         fake_event = {"type": "message", "message": dict(msg, flags=list(set(msg.get("flags", [])) | {"mentioned"}))}
         try:
-            if identity == constants.OPERATOR_IDENTITY:
+            if identity == constants.BRIDGE_IDENTITY:
                 handle_operator_tag(fake_event, mate_id)
             else:
                 handle_wake(identity, fake_event, flag_holder_ids)
@@ -756,7 +756,7 @@ def run_identity(identity, persona_emails):
     mate_id = mate_user_id()
     flag_holder_ids = flag_holder_user_ids()
 
-    if identity in personas.PERSONAS or identity == constants.OPERATOR_IDENTITY:
+    if identity in personas.PERSONAS or identity == constants.BRIDGE_IDENTITY:
         try:
             backfill(identity, mate_id, flag_holder_ids, persona_emails)
         except Exception:
@@ -785,7 +785,7 @@ def run_identity(identity, persona_emails):
         if not is_mention(event):
             return
         if identity not in personas.PERSONAS:
-            if identity == constants.OPERATOR_IDENTITY:
+            if identity == constants.BRIDGE_IDENTITY:
                 # Advances the same seen-id ledger backfill() reads, so a later restart's
                 # anchor is this tag, not None (which would fetch nothing and re-open the gap).
                 store.seen_set(identity, msg.get("id"))

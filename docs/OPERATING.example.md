@@ -14,7 +14,7 @@ Which channel opens a ticket, and where that ticket's build and verification run
 
 ## Links and attachments
 
-How documents ship. A sha-pinned link beats an attachment for anything someone opens later.
+How documents ship. Sha-pinned links for what a reader can pull; attachments for the rest.
 
 ## Permissions ledger
 

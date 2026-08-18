@@ -30,13 +30,12 @@ Before killing a non-Claude wake, read its per-lane tail under
 
 ## Links and attachments
 
-Attachments post as links; only images, video, and audio preview inline. Text documents ship
-as sha-pinned GitHub links from the repo they live in (commit and push first; `git remote -v`
-answers whether the repo has one). [attach:] is the lane for images and binaries, and the
-last-resort fallback for a file whose repo truly has no remote; a document written for the
-fleet belongs in a repo with a remote. Clicking text attachments in the Mac desktop app fails
-upstream (zulip-desktop #1113); if one must be opened, use the web app. Summaries and decisions
-go in the body, always.
+Attachments post as links; only images, video, and audio preview inline. Text documents tracked
+in a public repo ship as sha-pinned GitHub links (commit and push first). [attach:] is the lane
+for images, binaries, and any text not publicly pushed: plans, private-overlay files, repos with
+no remote. Clicking text attachments in the Mac desktop app fails upstream (zulip-desktop #1113,
+still open 2026-08-18); if one must be opened, use the web app. Summaries and decisions go in
+the body, always.
 
 The share lane is live (2026-08-12): remote wired, first push landed. A document someone
 will open later is committed and pushed

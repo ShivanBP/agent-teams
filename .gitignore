@@ -14,3 +14,4 @@ launchd/*.plist
 config/persona-matrix.json
 config/harness-defaults.json
 config/model-effort-defaults.json
+plugins/

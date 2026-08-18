@@ -1290,7 +1290,8 @@ WAKE_HEADER_CONTAINS = [
     "writes the closing post and any STATE block before finishing",
     "sha-pinned GitHub link",
     "never blob/main",
-    "put [attach: /abs/path] alone on a line",
+    "plans and private text included",
+    "[attach: /abs/path] alone on a line",
     "the deliverable itself goes in the reply, never a pointer",
     "full history is searchable any time with scripts/read.py --search",
 ]

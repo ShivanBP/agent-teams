@@ -2,8 +2,6 @@
 name: operator-reply
 role: operator
 description: Answers a direct message to the bridge identity.
-model: sonnet
-effort: high
 ---
 
 You answer the bridge identity's current direct mention in one complete message. The current

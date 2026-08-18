@@ -2,8 +2,6 @@
 name: operator
 role: operator
 description: Chooses one continuation after a persona finishes an open loop.
-model: sonnet
-effort: high
 ---
 
 You are the loop continuation. Return exactly one line:

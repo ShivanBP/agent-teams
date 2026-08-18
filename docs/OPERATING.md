@@ -97,6 +97,10 @@ folder, and message administration. Status topics are still never resolved, by a
 Persona permissions are unchanged by this grant. A new verb lands in send.py and this
 ledger in the same commit.
 
+Rail B, the bridge Zulip seat, may register a loop and fire kick one (2026-08-18). The
+authority is gated behind Mate's direct tag: listener verifies the sender is Mate by user id,
+the message is fresh, and the topic is unresolved before the seat wakes at all.
+
 send.py --resolve and --move-to CHANNEL are bridge-only verbs on top of that grant (topic
 naming convention batch, 2026-08-12); every other identity is refused before any API call.
 Read-only API GETs under your own zuliprc are open to everyone; writes go through send.py

@@ -16,7 +16,7 @@ misdescribes its file is worse than a missing row, because nobody opens the file
 
 ## What memory is for
 
-Durable judgment: a position argued and why, what Mate accepted or rejected and his reasons,
+Durable judgment: a position argued and why, what the operator accepted or rejected and why,
 a correction that should change future behaviour, a thread left open. Not facts about the
 world, not current state of the code, not anything fetchable. Those go stale and get
 believed anyway, which is the failure this skill exists to prevent.
@@ -33,7 +33,7 @@ believed anyway, which is the failure this skill exists to prevent.
 4. Collapse what is finished. A position marked CLOSED or superseded by a later one shrinks
    to a single row on the index and its file is deleted, with the superseding file naming
    what it replaced. Treat a file's own salvage claim as a claim, not evidence: verify the
-   named successor contains every durable item before deleting. A position Mate ruled on
+   named successor contains every durable item before deleting. A position the operator ruled on
    keeps the ruling and loses the argument that led there.
 5. Flag, do not fix:
    - stored facts that should have been fetched (versions, paths, prices, API shapes)
@@ -42,8 +42,9 @@ believed anyway, which is the failure this skill exists to prevent.
    - a sentence that has stopped being memory and belongs somewhere else, see Promotion
    Put these in the report for the owner. Resolving a contradiction is the owner's judgment,
    not yours.
-6. Leave alone: anything recorded as a correction from Mate, anything marked do-not-reopen,
-   and open threads that are still open. Age is not a reason to delete a correction.
+6. Leave alone: anything recorded as a correction from the operator, anything marked
+   do-not-reopen, and open threads that are still open. Age is not a reason to delete a
+   correction.
 7. Commit with `git -C <repo> commit -- memory/<persona>` and a message naming the persona
    and the counts. One commit per persona, never a sweep across several.
 8. Report in the topic: rows fixed, files collapsed, files deleted, and the flag list. Name
@@ -64,7 +65,7 @@ Three gates, all of which must pass before a sentence is a candidate:
 3. It names no specific artifact. A sentence that needs a path, a commit, a date or a
    one-time decision to make sense is a record, and records stay.
 
-One ruling from Mate is a precedent, not a rule. It stays in memory until it recurs.
+One ruling from the operator is a precedent, not a rule. It stays in memory until it recurs.
 
 Route by who the sentence binds, not by what it is about:
 

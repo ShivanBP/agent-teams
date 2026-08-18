@@ -47,7 +47,8 @@ WAKE_HEADER = (
     "mid-wake is visible to anyone, so the deliverable itself goes in the reply, never a "
     "pointer to it.\n"
     "You may post one question and end the wake, only if the answer changes the work; name "
-    "a default so Mate can answer in one word. Otherwise state the assumption and continue.\n"
+    "a default so the operator can answer in one word. Otherwise state the assumption and "
+    "continue.\n"
     "The wake that does the work writes the closing post and any STATE block before "
     "finishing; never end expecting another wake to summarize.\n"
     "A text document ships as a sha-pinned GitHub link: commit and push first, then link "
@@ -82,7 +83,7 @@ def wake_prompt(body, record, notice=""):
 
 
 def with_notice(body, notice):
-    """The handoff notice is also posted with the reply, so Mate sees the stale base directly."""
+    """The handoff notice is also posted with the reply, so the operator sees the stale base."""
     return notice + "\n\n" + body if notice else body
 
 
@@ -139,8 +140,8 @@ def provider_prompt(provider, persona_name, wake, persona, memory=""):
 
 
 # The footer on a wake's posted reply: the harness, model and effort that produced it, plus the
-# session id Mate resumes with. Stamped by the listener from the runner's resolved values; a
-# persona never composes it, because a wake is not told its own model or effort.
+# session id the operator resumes with. Stamped by the listener from the runner's resolved
+# values; a persona never composes it, because a wake is not told its own model or effort.
 WAKE_FOOTER = "\n\n```\n{harness} | {model} | {effort} | session {session}{degraded}\n```"
 
 
@@ -245,13 +246,13 @@ TAG_STALE = (
     "skipped rather than answered late."
 )
 
-TAG_NOT_MATE = (
-    "Refused: an operator tag from sender {sender}, not Mate, was ignored."
+TAG_NOT_OPERATOR = (
+    "Refused: an operator tag from sender {sender}, not the operator, was ignored."
 )
 
 WAKE_FAILED_NOTE = "[wake failed; see ~/.config/agent-team/logs]"
 
-# --- operator rails (Phase 3): loop continuation and Mate's direct tag -------------------------
+# --- operator rails (Phase 3): loop continuation and the operator's direct tag -----------------
 
 OPERATOR_CONTINUATION_FAILED = (
     "Operator continuation failed: {reason}. Tag the bridge again to retry."
@@ -329,9 +330,9 @@ OPERATOR_BRIEF = (
 REPLY_TRUNCATION_NOTE = "\n[reply truncated: showing the first {limit} of {total} characters]"
 
 OPERATOR_REPLY_BRIEF = (
-    "You are Bridge's Zulip seat. Mate tagged you (message {message_id}) in this topic. His "
-    "message is the one instruction; carry it out and reply in this topic with the result.\n\n"
-    "His message: {message}\n"
+    "You are Bridge's Zulip seat. The operator tagged you (message {message_id}) in this topic. "
+    "That message is the one instruction; carry it out and reply in this topic with the result.\n\n"
+    "The message: {message}\n"
     "{loop_note}\n\n"
     "{state}\n\n"
     "Topic record:\n{record}"

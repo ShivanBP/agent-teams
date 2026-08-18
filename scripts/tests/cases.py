@@ -23,7 +23,7 @@ WILDCARDS = [
     ("@**channel** and @**topic** and @**stream**",
      "@" + Z + "**channel** and @" + Z + "**topic** and @" + Z + "**stream**"),
     ("@_**all**", "@" + Z + "_**all**"),
-    ("@**Mate Molnar** stays", "@**Mate Molnar** stays"),
+    ("@**Ada Example** stays", "@**Ada Example** stays"),
     ("code `@**all**` too", "code `@" + Z + "**all**` too"),
     ("", ""),
 ]
@@ -618,19 +618,19 @@ FLAG_PARSES = [
     ("no dashes here -notaflag", ([], "no dashes here -notaflag")),
 ]
 
-# (singular email, holder emails, API members, expected Mate id, holder ids, mention)
+# (singular email, holder emails, API members, expected operator id, holder ids, mention)
 USER_ID_RESOLUTIONS = [
     (
-        "mate@example.com",
-        frozenset({"mate@example.com", "john@example.com"}),
+        "operator@example.com",
+        frozenset({"operator@example.com", "holder@example.com"}),
         [
-            {"email": "john@example.com", "user_id": 8, "full_name": "John"},
-            {"email": "mate@example.com", "user_id": 7, "full_name": "Mate"},
+            {"email": "holder@example.com", "user_id": 8, "full_name": "Holder"},
+            {"email": "operator@example.com", "user_id": 7, "full_name": "Op"},
             {"email": "other@example.com", "user_id": 9, "full_name": "Other"},
         ],
         7,
         frozenset({7, 8}),
-        "@**Mate**",
+        "@**Op**",
     ),
 ]
 
@@ -1286,7 +1286,7 @@ AGY_PARSES = [
 WAKE_HEADER_CONTAINS = [
     "post one question and end the wake",
     "only if the answer changes the work",
-    "name a default so Mate can answer in one word",
+    "name a default so the operator can answer in one word",
     "writes the closing post and any STATE block before finishing",
     "sha-pinned GitHub link",
     "never blob/main",
@@ -1296,13 +1296,13 @@ WAKE_HEADER_CONTAINS = [
 ]
 
 # (prompts attribute name, required substring): guards strings whose content no other table
-# asserts, the vacancy behind the TAG_NOT_MATE copy-paste bug
+# asserts, the vacancy behind the TAG_NOT_OPERATOR copy-paste bug
 PROMPT_CONTAINS = [
     ("RECORD_LINE", "{stamp}"),
     ("RECORD_LINE", "{sender}"),
     ("RECORD_LINE", "{body}"),
-    ("TAG_NOT_MATE", "{sender}"),
-    ("TAG_NOT_MATE", "not Mate"),
+    ("TAG_NOT_OPERATOR", "{sender}"),
+    ("TAG_NOT_OPERATOR", "not the operator"),
     ("TAG_STALE", "{max_age}"),
     ("MENTION", "@**{name}**"),
     ("MENTION", "{body}"),

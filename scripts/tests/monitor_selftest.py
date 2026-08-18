@@ -12,6 +12,12 @@ def run(module):
 
 
 def _body():
+    import api
+    import constants
+    import personas
+    import prompts
+    import send as send_mod
+    import store
     import tests.cases as cases
 
     passed = failed = 0

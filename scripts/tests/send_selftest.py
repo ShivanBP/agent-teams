@@ -12,6 +12,7 @@ def run(module):
 
 
 def _body():
+    import api
     import tests.cases as cases
 
     passed = failed = 0

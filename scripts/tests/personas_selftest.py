@@ -12,6 +12,9 @@ def run(module):
 
 
 def _body():
+    import tempfile
+    from pathlib import Path
+
     from tests import cases
 
     passed = failed = 0

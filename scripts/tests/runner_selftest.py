@@ -14,6 +14,13 @@ def run(module):
 def _body():
     global PERSONA_DIR
 
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    import tempfile
+
+    import constants
     import tests.cases as cases
 
     passed = failed = 0

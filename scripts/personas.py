@@ -3,8 +3,6 @@
 import argparse
 import re
 import sys
-import tempfile
-from pathlib import Path
 
 PERSONAS = ("archie", "bob", "chella", "eve", "jan", "peter", "writer")
 

@@ -12,7 +12,20 @@ def run(module):
 
 
 def _body():
+    import logging
+    import time
+
+    import api
+    import constants
+    import digest
+    import loops
+    import monitor
+    import personas
+    import runner
+    import send as send_mod
+    import store
     import tests.cases as cases
+    import todo
 
     passed = failed = 0
     for name in cases.LISTENER_LAZY_GLOBALS:

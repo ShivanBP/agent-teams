@@ -12,6 +12,8 @@ def run(module):
 
 
 def _body():
+    import json
+    import os
     import tests.cases as cases
     import personas
 

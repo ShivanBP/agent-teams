@@ -12,6 +12,9 @@ def run(module):
 
 
 def _body():
+    import datetime
+
+    import constants
     import tests.cases as cases
 
     passed = failed = 0

@@ -12,6 +12,10 @@ def run(module):
 
 
 def _body():
+    import json
+    import os
+
+    import constants
     import tests.cases as cases
 
     passed = failed = 0

@@ -30,6 +30,11 @@ files to begin:
 cp agents.examples/*.md agents/
 ```
 
+The starters are skeletons, not this fleet's live agent files. Each carries the bare shape of
+a role; the running estate's judgment lives in its own `agents/` and `memory/`, which the
+public repository never ships. Read a starter as a beginning to rewrite, never as a mirror to
+keep in step with whatever this estate's seats do next.
+
 Rename and rewrite the chosen personas. Keep each filename, its frontmatter `name`, and the
 persona matrix keys identical: the matrix is the roster, and `scripts/personas.py` reads it.
 Remove unused starter rows.

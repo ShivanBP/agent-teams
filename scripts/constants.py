@@ -161,6 +161,23 @@ OPENCODE_BIN = os.environ.get(
 OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", HARNESS_DEFAULTS["opencode"]["model"])
 OPENCODE_VARIANT = os.environ.get("OPENCODE_VARIANT", HARNESS_DEFAULTS["opencode"]["effort"])
 
+LAST_ACTION_LABELS = {
+    "claude:text": "writing reply",
+    "claude:tool_use": "using tool",
+    "codex:agent_message": "writing reply",
+    "codex:command_execution": "running command",
+    "codex:file_change": "editing files",
+    "codex:web_search": "searching web",
+    "agy:step_update": "writing reply",
+    "opencode:text": "writing reply",
+    "opencode:tool": "using tool",
+}
+
+BOARD_GROUPS = (
+    ("Workshop", ("setup", "maintenance", "scheduled-jobs", "status")),
+    ("Domains", ("foundry", "job-search", "money", "outer-realms", "peter's")),
+)
+
 RESOLVED_PREFIX = "✔"  # Zulip's own resolve marker on a topic name; startswith semantics only.
 
 ATTACH_MAX_BYTES = 10 * 1024 * 1024

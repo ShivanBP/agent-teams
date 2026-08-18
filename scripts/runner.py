@@ -38,6 +38,44 @@ def _wake_log_path(lane):
     return constants.LOGS_DIR / "wakes" / (slug + ".jsonl")
 
 
+def _action_key(event):
+    event_type = event.get("type")
+    if event_type == "assistant":
+        content = (event.get("message") or {}).get("content") or []
+        for part in reversed(content):
+            if part.get("type") in ("text", "tool_use"):
+                return "claude:%s" % part["type"]
+    if event_type == "item.completed":
+        return "codex:%s" % (event.get("item") or {}).get("type")
+    if event.get("event") == "step_update":
+        return "agy:step_update"
+    if event_type == "text":
+        return "opencode:text"
+    if event_type in ("tool", "tool_use"):
+        return "opencode:tool"
+    return None
+
+
+def last_action(lane):
+    path = _wake_log_path(lane)
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 65536))
+            lines = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            key = _action_key(json.loads(line))
+        except ValueError:
+            continue
+        if key in constants.LAST_ACTION_LABELS:
+            return constants.LAST_ACTION_LABELS[key]
+    return None
+
+
 def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=None):
     kwargs = {
         "cwd": str(cwd), "env": env, "stderr": subprocess.PIPE,
@@ -830,6 +868,31 @@ def _selftest():
         else:
             failed += 1
             print("FAIL _wake_log_path(%r) -> %r wanted %r" % (lane, got, expected))
+
+    for event, expected in cases.LAST_ACTION_EVENTS:
+        got = _action_key(event)
+        got = constants.LAST_ACTION_LABELS.get(got)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL last action event %r -> %r wanted %r" % (event, got, expected))
+
+    with tempfile.TemporaryDirectory() as root:
+        old_logs = constants.LOGS_DIR
+        try:
+            constants.LOGS_DIR = Path(root)
+            path = _wake_log_path(cases.LAST_ACTION_LANE)
+            path.parent.mkdir(parents=True)
+            path.write_text(cases.LAST_ACTION_LOG)
+            got = last_action(cases.LAST_ACTION_LANE)
+        finally:
+            constants.LOGS_DIR = old_logs
+        if got == cases.LAST_ACTION_EXPECTED:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL last_action tail -> %r wanted %r" % (got, cases.LAST_ACTION_EXPECTED))
 
     with tempfile.TemporaryDirectory() as root:
         wake_log = Path(root) / "wake.jsonl"

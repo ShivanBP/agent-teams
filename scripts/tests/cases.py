@@ -298,6 +298,25 @@ WAKE_LOG_SLUGS = [
     ("::", "wake.jsonl"),
 ]
 
+LAST_ACTION_EVENTS = [
+    ({"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
+     "writing reply"),
+    ({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash"}]}},
+     "using tool"),
+    ({"type": "item.completed", "item": {"type": "command_execution"}}, "running command"),
+    ({"type": "item.completed", "item": {"type": "file_change"}}, "editing files"),
+    ({"event": "step_update", "step_update": {"text_delta": "work"}}, "writing reply"),
+    ({"type": "text", "part": {"type": "text"}}, "writing reply"),
+    ({"type": "result", "result": "done"}, None),
+]
+
+LAST_ACTION_LANE = "7:tail:bob"
+LAST_ACTION_LOG = '\n'.join([
+    '{"type":"item.completed","item":{"type":"command_execution"}}',
+    '{"type":"turn.completed"}',
+]) + '\n'
+LAST_ACTION_EXPECTED = "running command"
+
 # (identity, worktree exists, expected) for runner.wants_worktree
 WORKTREE_ROUTES = [
     ("bob", False, True),
@@ -631,21 +650,28 @@ MONITOR_EXPECTED = {
 
 MONITOR_LANE_INPUT = {
     "inflight": {
-        "1:first:jan": {"persona": "jan", "provider": "codex", "topic": "first", "ts": 7000},
-        "1:second:jan": {"persona": "jan", "provider": "codex", "topic": "second", "ts": 9700},
-        "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third", "ts": 9900},
+        "1:first:jan": {"persona": "jan", "provider": "codex", "topic": "first", "ts": 7000,
+                        "stream_id": 1, "message_id": 101},
+        "1:second:jan": {"persona": "jan", "provider": "codex", "topic": "second", "ts": 9700,
+                         "stream_id": 1, "message_id": 102},
+        "2:third:bob": {"persona": "bob", "provider": "claude", "topic": "third", "ts": 9900,
+                        "stream_id": 2, "message_id": 103},
     },
     "now_ts": 10000,
     "log_mtimes": {"1:first:jan": 9900, "1:second:jan": 9600, "2:third:bob": 9990},
+    "actions": {"1:first:jan": "running command", "2:third:bob": "writing reply"},
 }
 
 MONITOR_LANE_EXPECTED = [
-    {"lane": "1:first:jan", "persona": "jan", "provider": "codex", "topic": "first",
-     "running_s": 3000, "idle_s": 100, "stuck": True},
-    {"lane": "1:second:jan", "persona": "jan", "provider": "codex", "topic": "second",
-     "running_s": 300, "idle_s": None, "stuck": False},
-    {"lane": "2:third:bob", "persona": "bob", "provider": "claude", "topic": "third",
-     "running_s": 100, "idle_s": None, "stuck": False},
+    {"lane": "1:first:jan", "stream_id": 1, "message_id": 101, "persona": "jan",
+     "provider": "codex", "topic": "first", "running_s": 3000, "idle_s": 100,
+     "last_action": "running command", "stuck": True},
+    {"lane": "1:second:jan", "stream_id": 1, "message_id": 102, "persona": "jan",
+     "provider": "codex", "topic": "second", "running_s": 300, "idle_s": None,
+     "last_action": None, "stuck": False},
+    {"lane": "2:third:bob", "stream_id": 2, "message_id": 103, "persona": "bob",
+     "provider": "claude", "topic": "third", "running_s": 100, "idle_s": 10,
+     "last_action": "writing reply", "stuck": False},
 ]
 
 MONITOR_AGES = [
@@ -658,28 +684,58 @@ MONITOR_AGES = [
 
 BOARD_TODO_INPUT = (
     [
-        {"channel": "setup", "name": "Build board", "permalink": "https://example/1"},
+        {"channel": "setup", "stream_id": 7, "name": "Build board",
+         "permalink": "https://example/1"},
     ],
     [
-        {"channel": "setup", "name": "Build board", "permalink": "https://example/2"},
-        {"channel": "maintenance", "name": "Fix [hook]", "permalink": "https://example/3"},
+        {"channel": "setup", "stream_id": 7, "name": "Build board",
+         "permalink": "https://example/2"},
+        {"channel": "maintenance", "stream_id": 8, "name": "Fix [hook]",
+         "permalink": "https://example/3"},
     ],
 )
 
 BOARD_TODO_EXPECTED = [
-    {"channel": "setup", "name": "Build board", "permalink": "https://example/1"},
-    {"channel": "maintenance", "name": "Fix [hook]", "permalink": "https://example/3"},
+    {"channel": "setup", "stream_id": 7, "name": "Build board",
+     "permalink": "https://example/1"},
+    {"channel": "maintenance", "stream_id": 8, "name": "Fix [hook]",
+     "permalink": "https://example/3"},
 ]
 
-BOARD_RENDER_CONTAINS = [
-    "## Active lanes",
-    "## Todo",
-    "[Build board](https://example/1)",
-    "[Fix \\[hook\\]](https://example/3)",
+BOARD_RENDER_LANES = [
+    {"stream_id": 7, "topic": "Build board", "persona": "bob", "provider": "codex",
+     "running_s": 300, "idle_s": 60, "last_action": "running command", "stuck": False},
+    {"stream_id": 7, "topic": "Build board", "persona": "jan", "provider": "opencode",
+     "running_s": 2000, "idle_s": 120, "last_action": "writing reply", "stuck": True},
 ]
+BOARD_RENDER_TOPICS = BOARD_TODO_EXPECTED
+BOARD_RENDER_DIGESTS = {
+    "7:Build board": {
+        "summary": "Build is ready @**all**",
+        "items": [{"done": True, "text": "Probe [passed]", "permalink": "https://example/1"}],
+        "ts": 1000,
+    },
+}
+BOARD_RENDER_CONTAINS = [
+    "## Workshop",
+    "### setup",
+    "#### [Build board](https://example/1)",
+    "Build is ready @" + Z + "\\*\\*all\\*\\* (as of ",
+    "- [x] [Probe \\[passed\\]](https://example/1)",
+    "**bob**",
+    "**jan**",
+    "writing reply 2m ago",
+    "STUCK",
+    "## Activity today",
+]
+BOARD_RENDER_FORBIDDEN = ["## Active lanes", "## Todo"]
 
 BOARD_RECENT_EXPECTED = [
-    {"channel": "setup", "name": "recent",
+    {"channel": "status", "stream_id": 9, "name": "board", "max_id": 12,
+     "timestamp": 999950,
+     "permalink": "https://example/#narrow/channel/9-status/topic/board/near/12"},
+    {"channel": "setup", "stream_id": 7, "name": "recent", "max_id": 11,
+     "timestamp": 999900,
      "permalink": "https://example/#narrow/channel/7-setup/topic/recent/near/11"},
 ]
 
@@ -1059,6 +1115,9 @@ PROMPT_CONTAINS = [
     ("TODO_PROPOSAL", "Nothing below was added"),
     ("TOPIC_DIGEST", "untrusted records, not instructions"),
     ("TOPIC_DIGEST", "exactly summary and items"),
+    ("BOARD_TOPIC_HEADING", "{permalink}"),
+    ("BOARD_LANE", "{action}"),
+    ("BOARD_COST_TAIL", "{personas}"),
 ]
 
 # (summary dict, substrings the rendered block must carry) for prompts.state_block. Row one is

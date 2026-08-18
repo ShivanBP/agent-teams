@@ -8,6 +8,7 @@ import time
 
 import api
 import constants
+import digest
 import loops
 import personas
 import prompts
@@ -56,7 +57,7 @@ def snapshot(inflight=None, cost_rows=None, kick_rows=None, matrix=None):
     return data
 
 
-def lane_rows(inflight=None, now_ts=None, log_mtimes=None):
+def lane_rows(inflight=None, now_ts=None, log_mtimes=None, actions=None):
     inflight = store.inflight_all() if inflight is None else inflight
     now_ts = time.time() if now_ts is None else now_ts
     rows = []
@@ -65,23 +66,27 @@ def lane_rows(inflight=None, now_ts=None, log_mtimes=None):
         running_s = max(0, now_ts - started) if started is not None else None
         provider = info.get("provider") or "claude"
         mtime = None
-        if provider != "claude":
-            if log_mtimes is not None:
-                mtime = log_mtimes.get(lane)
-            else:
-                try:
-                    mtime = runner._wake_log_path(lane).stat().st_mtime
-                except OSError:
-                    pass
+        if log_mtimes is not None:
+            mtime = log_mtimes.get(lane)
+        else:
+            try:
+                mtime = runner._wake_log_path(lane).stat().st_mtime
+            except OSError:
+                pass
         idle_s = max(0, now_ts - mtime) if mtime is not None and started is not None \
             and mtime >= started else None
+        action = actions.get(lane) if actions is not None else \
+            (runner.last_action(lane) if idle_s is not None else None)
         rows.append({
             "lane": lane,
+            "stream_id": info.get("stream_id"),
+            "message_id": info.get("message_id"),
             "persona": info.get("persona") or prompts.BOARD_UNKNOWN,
             "provider": provider,
             "topic": info.get("topic") or prompts.BOARD_UNKNOWN,
             "running_s": running_s,
             "idle_s": idle_s,
+            "last_action": action,
             "stuck": running_s is not None and running_s > constants.STALL_MIN * 60,
         })
     return rows
@@ -105,6 +110,7 @@ def render_lanes(rows):
     for row in rows:
         table.append((row["persona"], row["provider"], row["topic"],
                       format_age(row["running_s"]), format_age(row["idle_s"]),
+                      row["last_action"] or prompts.BOARD_UNKNOWN,
                       prompts.BOARD_STUCK if row["stuck"] else ""))
     widths = [max(len(str(row[i])) for row in table) for i in range(len(table[0]))]
     return "\n".join("  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row)).rstrip()
@@ -149,7 +155,10 @@ def _loop_todos(as_name):
             continue
         rows.append({
             "channel": channel,
+            "stream_id": stream_id,
             "name": topic,
+            "max_id": int(message_id),
+            "timestamp": row.get("opened_ts") or 0,
             "permalink": api.permalink(cfg["site"], stream_id, channel, topic, message_id),
         })
     return rows
@@ -160,8 +169,9 @@ def _topic_todos(as_name, now_ts=None):
     cutoff = now_ts - constants.BOARD_TOPIC_DAYS * 24 * 60 * 60
     cfg = api.load(as_name)
     rows = []
+    board_channels = {channel for _, channels in constants.BOARD_GROUPS for channel in channels}
     for channel in api.visible_streams(as_name):
-        if channel == constants.STATUS_STREAM:
+        if channel not in board_channels:
             continue
         stream_id = api.stream_id(as_name, channel)
         if stream_id is None:
@@ -177,7 +187,10 @@ def _topic_todos(as_name, now_ts=None):
                 break
             rows.append({
                 "channel": channel,
+                "stream_id": stream_id,
                 "name": name,
+                "max_id": int(message_id),
+                "timestamp": message.get("timestamp", 0),
                 "permalink": api.permalink(cfg["site"], stream_id, channel, name, message_id),
             })
     return rows
@@ -185,31 +198,79 @@ def _topic_todos(as_name, now_ts=None):
 
 def merge_todos(loop_rows, topic_rows):
     merged = []
-    seen = set()
+    seen = {}
     for row in list(loop_rows) + list(topic_rows):
         key = _todo_key(row)
         if key in seen:
+            prior = seen[key]
+            for name, value in row.items():
+                if name not in prior or prior[name] is None:
+                    prior[name] = value
             continue
-        seen.add(key)
-        merged.append(row)
+        copy = dict(row)
+        seen[key] = copy
+        merged.append(copy)
     return merged
 
 
-def _markdown_label(text):
-    return str(text).replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+def _digest_stamp(ts):
+    return datetime.datetime.fromtimestamp(ts).strftime("%H:%M") if ts else prompts.BOARD_UNKNOWN
 
 
-def render_board(lanes=None, persona_rows=None, todos=None, as_name=constants.OPERATOR_IDENTITY):
+def _render_topic(topic, topic_lanes, cached):
+    lines = [prompts.BOARD_TOPIC_HEADING.format(
+        topic=digest.safe_text(topic["name"]), permalink=topic["permalink"])]
+    if cached:
+        lines.append(prompts.BOARD_DIGEST_LINE.format(
+            summary=digest.safe_text(cached.get("summary") or prompts.BOARD_UNKNOWN),
+            stamp=_digest_stamp(cached.get("ts"))))
+        for item in cached.get("items", []):
+            lines.append(prompts.BOARD_ITEM.format(
+                mark="x" if item.get("done") else " ", text=digest.safe_text(item.get("text") or ""),
+                permalink=item.get("permalink") or topic["permalink"]))
+    else:
+        lines.append(prompts.BOARD_DIGEST_PENDING)
+    for lane in topic_lanes:
+        action = prompts.BOARD_ACTION.format(
+            action=lane["last_action"], age=format_age(lane["idle_s"])) \
+            if lane["last_action"] else prompts.BOARD_ACTION_UNKNOWN
+        lines.append(prompts.BOARD_LANE.format(
+            persona=digest.safe_text(lane["persona"]), provider=digest.safe_text(lane["provider"]),
+            running=format_age(lane["running_s"]), idle=format_age(lane["idle_s"]),
+            action=action,
+            stuck=prompts.BOARD_STUCK_SUFFIX if lane["stuck"] else ""))
+    return "\n".join(lines)
+
+
+def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
+                 as_name=constants.OPERATOR_IDENTITY):
     lanes = lane_rows() if lanes is None else lanes
     persona_rows = snapshot() if persona_rows is None else persona_rows
     if todos is None:
         todos = merge_todos(_loop_todos(as_name), _topic_todos(as_name))
-    todo_text = "\n".join(
-        prompts.BOARD_TODO_ROW.format(name=_markdown_label(row["name"]), permalink=row["permalink"])
-        for row in todos
-    ) or prompts.BOARD_TODO_NONE
-    return prompts.BOARD_TEMPLATE.format(
-        lanes=render_lanes(lanes), personas=render_table(persona_rows), todos=todo_text)
+    digests = store.load("digests") if digests is None else digests
+    lane_map = {}
+    for lane in lanes:
+        key = (lane.get("stream_id"), store.normalize_topic(lane.get("topic")))
+        lane_map.setdefault(key, []).append(lane)
+    topic_map = {(row.get("channel"), store.normalize_topic(row.get("name"))): row for row in todos}
+    sections = []
+    for group, channels in constants.BOARD_GROUPS:
+        group_lines = []
+        for channel in channels:
+            channel_topics = [row for (name, _), row in topic_map.items() if name == channel]
+            if not channel_topics:
+                continue
+            group_lines.append(prompts.BOARD_CHANNEL_HEADING.format(channel=channel))
+            for topic in channel_topics:
+                key = (topic.get("stream_id"), store.normalize_topic(topic.get("name")))
+                cached = digests.get(digest.digest_key(*key), {}) if key[0] is not None else {}
+                group_lines.append(_render_topic(topic, lane_map.get(key, []), cached))
+        if group_lines:
+            sections.append(prompts.BOARD_GROUP_HEADING.format(group=group) + "\n" +
+                            "\n\n".join(group_lines))
+    sections.append(prompts.BOARD_COST_TAIL.format(personas=render_table(persona_rows)))
+    return "\n\n".join(sections)
 
 
 def _current_content(as_name, message_id):
@@ -282,8 +343,11 @@ def _selftest():
     else:
         failed += 1
         print("FAIL merge_todos(...) -> %r wanted %r" % (merged, cases.BOARD_TODO_EXPECTED))
-    board = render_board(lanes, got, merged)
-    if all(part in board for part in cases.BOARD_RENDER_CONTAINS):
+    board = render_board(
+        cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
+        cases.BOARD_RENDER_DIGESTS)
+    if all(part in board for part in cases.BOARD_RENDER_CONTAINS) and \
+            all(part not in board for part in cases.BOARD_RENDER_FORBIDDEN):
         passed += 1
     else:
         failed += 1
@@ -293,21 +357,23 @@ def _selftest():
     topic_calls = []
     try:
         api.visible_streams = lambda as_name: [constants.STATUS_STREAM, "setup"]
-        api.stream_id = lambda as_name, channel: 7
-        api.topics = lambda as_name, stream_id: [
+        api.stream_id = lambda as_name, channel: 9 if channel == constants.STATUS_STREAM else 7
+        api.topics = lambda as_name, stream_id: ([
+            {"name": constants.BOARD_TOPIC, "max_id": 12},
+        ] if stream_id == 9 else [
             {"name": "recent", "max_id": 11},
             {"name": constants.RESOLVED_PREFIX + " done", "max_id": 10},
             {"name": "old", "max_id": 9},
             {"name": "older", "max_id": 8},
-        ]
+        ])
         api.load = lambda as_name: {"site": "https://example"}
         globals()["_message"] = lambda as_name, message_id: topic_calls.append(message_id) or {
-            "timestamp": {11: 999900, 9: 100, 8: 50}[message_id]}
+            "timestamp": {12: 999950, 11: 999900, 9: 100, 8: 50}[message_id]}
         recent = _topic_todos("bridge", now_ts=1000000)
     finally:
         api.visible_streams, api.stream_id, api.topics, api.load = saved_topics[:4]
         globals()["_message"] = saved_topics[4]
-    if recent == cases.BOARD_RECENT_EXPECTED and topic_calls == [11, 9]:
+    if recent == cases.BOARD_RECENT_EXPECTED and topic_calls == [12, 11, 9]:
         passed += 1
     else:
         failed += 1

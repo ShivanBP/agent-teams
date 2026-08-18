@@ -114,8 +114,9 @@ def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_f
     refresh_fn = refresh_fn or refresh_topic
     cached = load_fn("digests")
     refreshed = []
+    board_channels = {channel for _, channels in constants.BOARD_GROUPS for channel in channels}
     for channel in streams_fn(as_name):
-        if channel == constants.STATUS_STREAM:
+        if channel not in board_channels:
             continue
         stream_id = stream_id_fn(as_name, channel)
         if stream_id is None:
@@ -123,6 +124,8 @@ def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_f
         for topic in topics_fn(as_name, stream_id):
             name, max_id = topic.get("name") or "", topic.get("max_id")
             if not name or name.strip().startswith(constants.RESOLVED_PREFIX) or max_id is None:
+                continue
+            if channel == constants.STATUS_STREAM and name == constants.BOARD_TOPIC:
                 continue
             current = cached.get(digest_key(stream_id, name), {})
             if int(max_id) <= int(current.get("anchor_id") or 0):
@@ -173,7 +176,7 @@ def _selftest():
 
     calls = []
     swept = sweep_once(
-        streams_fn=lambda as_name: [constants.STATUS_STREAM, "setup"],
+        streams_fn=lambda as_name: ["random", "setup"],
         stream_id_fn=lambda as_name, channel: 7,
         topics_fn=lambda as_name, stream_id: cases.DIGEST_SWEEP_TOPICS,
         load_fn=lambda name: cases.DIGEST_SWEEP_STATE,

@@ -29,7 +29,7 @@ def message_record(channel, stream_id, message, site):
     }
 
 
-def cap_messages(messages, max_chars=constants.TODO_SWEEP_MAX_CHARS):
+def cap_messages(messages, max_chars):
     rows = list(sorted(messages, key=lambda row: row["id"]))
     encoded = [json.dumps(row, sort_keys=True, separators=(",", ":")) for row in rows]
     total = sum(len(row) for row in encoded) + max(0, len(encoded) - 1) + 2
@@ -54,7 +54,7 @@ def _model_env():
 
 def model_command(prompt):
     return [
-        "claude", "-p", "--model", constants.TODO_SWEEP_MODEL, "--output-format", "json",
+        "claude", "-p", "--model", constants.DIGEST_MODEL, "--output-format", "json",
         "--tools", "", "--safe-mode", "--disable-slash-commands",
         "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
         "--no-session-persistence", prompt,
@@ -72,7 +72,7 @@ def _record_cost(envelope, lane, cost_fn):
         "cache_creation": usage.get("cache_creation_input_tokens", 0),
         "input_tokens": usage.get("input_tokens", 0),
         "provider": "claude",
-        "model": constants.TODO_SWEEP_MODEL,
+        "model": constants.DIGEST_MODEL,
         "effort": None,
     }
     for key in ("output_tokens", "thinking_tokens", "total_tokens"):
@@ -109,7 +109,7 @@ def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cos
         return invoke(path)
 
 
-def sweep_thread(interval=constants.TODO_SWEEP_MIN * 60):
+def sweep_thread(interval=constants.DIGEST_SWEEP_MIN * 60):
     while True:
         try:
             import digest

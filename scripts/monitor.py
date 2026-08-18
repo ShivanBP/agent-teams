@@ -4,6 +4,7 @@ import argparse
 import datetime
 import difflib
 import json
+import logging
 import sys
 import time
 
@@ -16,6 +17,8 @@ import prompts
 import runner
 import send as send_mod
 import store
+
+log = logging.getLogger("agent-team.monitor")
 
 
 def _ledger_rows(prefix):
@@ -118,13 +121,17 @@ def render_lanes(rows):
                      for row in table)
 
 
+def _running_status(row):
+    if row["status"] == prompts.BOARD_RUNNING and row["topic"]:
+        return prompts.BOARD_RUNNING_TOPIC.format(topic=row["topic"])
+    return row["status"]
+
+
 def render_table(data):
     rows = [prompts.BOARD_PERSONA_HEADERS]
     for name in personas.PERSONAS:
         row = data[name]
-        status = row["status"]
-        if status == prompts.BOARD_RUNNING and row["topic"]:
-            status = prompts.BOARD_RUNNING_TOPIC.format(topic=row["topic"])
+        status = _running_status(row)
         rows.append((name, row["provider"], status,
                      prompts.BOARD_COST.format(usd=row["cost_today"]), str(row["kicks_today"])))
     widths = [max(len(str(row[i])) for row in rows) for i in range(len(rows[0]))]
@@ -136,9 +143,7 @@ def render_activity(data):
     rows = []
     for name in personas.PERSONAS:
         row = data[name]
-        status = row["status"]
-        if status == prompts.BOARD_RUNNING and row["topic"]:
-            status = prompts.BOARD_RUNNING_TOPIC.format(topic=row["topic"])
+        status = _running_status(row)
         rows.append(prompts.BOARD_ACTIVITY_ROW.format(
             persona=digest.safe_text(name).replace("|", "\\|"),
             provider=digest.safe_text(row["provider"]).replace("|", "\\|"),
@@ -426,6 +431,42 @@ def _current_content(as_name, message_id):
     return message.get("content") if message else None
 
 
+def _board_working(state_name, message_id=None):
+    def save(data):
+        if message_id is not None:
+            data["message_id"] = message_id
+        data.pop("failed", None)
+        return data
+
+    store.mutate(state_name, save)
+
+
+def _board_failed(as_name, state_name, section):
+    claimed = []
+
+    def claim(data):
+        if not data.get("failed"):
+            data["failed"] = True
+            claimed.append(True)
+        return data
+
+    store.mutate(state_name, claim)
+    if not claimed:
+        return
+    try:
+        send_mod.post(
+            as_name, constants.STATUS_STREAM, constants.ALERTS_TOPIC,
+            prompts.BOARD_UPDATE_ALERT.format(section=section))
+    except (Exception, SystemExit):
+        log.exception("failed to post board update alert for section %s", section)
+
+        def clear(data):
+            data.pop("failed", None)
+            return data
+
+        store.mutate(state_name, clear)
+
+
 def update_board(as_name=constants.OPERATOR_IDENTITY, content=None, contents=None):
     split_live = any(store.load(constants.BOARD_STATE_KEYS[name]).get("message_id")
                      for name in ("workshop", "domains"))
@@ -436,18 +477,45 @@ def update_board(as_name=constants.OPERATOR_IDENTITY, content=None, contents=Non
     for name, body in contents.items():
         state_name = constants.BOARD_STATE_KEYS[name]
         message_id = store.load(state_name).get("message_id")
-        if message_id is None:
-            message_id = send_mod.post(
-                as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body)
-            store.mutate(state_name, lambda data, value=message_id: {"message_id": value})
+        try:
+            if message_id is None:
+                message_id = send_mod.post(
+                    as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body)
+                _board_working(state_name, message_id)
+                results[name] = (message_id, True)
+                continue
+            if _current_content(as_name, message_id) == body:
+                _board_working(state_name)
+                results[name] = (message_id, False)
+                continue
+            send_mod.update(as_name, message_id, body)
+            _board_working(state_name)
             results[name] = (message_id, True)
-            continue
-        if _current_content(as_name, message_id) == body:
-            results[name] = (message_id, False)
-            continue
-        send_mod.update(as_name, message_id, body)
-        results[name] = (message_id, True)
+        except (Exception, SystemExit):
+            log.exception("board section %s failed to update", name)
+            results[name] = (message_id, None)
+            try:
+                _board_failed(as_name, state_name, name)
+            except (Exception, SystemExit):
+                log.exception("board section %s failure state could not be saved", name)
     return results
+
+
+def refresh_board(channel=None, topic=None, digests=False,
+                  as_name=constants.OPERATOR_IDENTITY, topics=None,
+                  refresh_fn=None, sweep_fn=None, update_fn=None):
+    refresh_fn = refresh_fn or digest.refresh_topic
+    sweep_fn = sweep_fn or digest.sweep_once
+    update_fn = update_fn or update_board
+    if digests:
+        sweep_fn(as_name)
+    elif channel is not None:
+        row = _topic_match(
+            channel.strip(), topic.strip(),
+            unresolved_topics(as_name) if topics is None else topics)
+        refresh_fn(
+            as_name, row["stream_id"], row["channel"], row["name"], force=True)
+    return update_fn(as_name=as_name)
 
 
 def _selftest():
@@ -624,6 +692,25 @@ def _selftest():
         print("FAIL set_parked exact control -> %r %r %r %r" %
               (parked_row, unparked_row, parked_state, mismatch))
 
+    refreshes, sweeps, board_refreshes = [], [], []
+    update_stub = lambda **kwargs: board_refreshes.append(kwargs) or {"activity": (99, False)}
+    single_refresh = refresh_board(
+        "setup", "Build board", topics=cases.PARK_TOPICS,
+        refresh_fn=lambda *args, **kwargs: refreshes.append((args, kwargs)),
+        update_fn=update_stub)
+    digest_refresh = refresh_board(
+        digests=True, sweep_fn=lambda as_name: sweeps.append(as_name), update_fn=update_stub)
+    board_refresh = refresh_board(update_fn=update_stub)
+    if refreshes == [(("bridge", 7, "setup", "Build board"), {"force": True})] \
+            and sweeps == [constants.OPERATOR_IDENTITY] \
+            and board_refreshes == [{"as_name": constants.OPERATOR_IDENTITY}] * 3 \
+            and single_refresh == digest_refresh == board_refresh == {"activity": (99, False)}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL refresh_board modes -> %r %r %r" %
+              (refreshes, sweeps, board_refreshes))
+
     states, current, posts, updates = {}, {}, [], []
     saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
     try:
@@ -662,6 +749,56 @@ def _selftest():
         print("FAIL update_board sequence: %r %r %r split=%r states=%r posts=%r updates=%r" %
               (first, unchanged, changed, split, states, posts, updates))
 
+    states = {
+        "board": {"message_id": 99},
+        "board-workshop": {"message_id": 100},
+        "board-domains": {"message_id": 101},
+    }
+    alerts, update_attempts = [], []
+    fail_activity = [True]
+    saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
+    log_disabled = log.disabled
+    try:
+        store.load = lambda name: dict(states.get(name, {}))
+
+        def mutate_failure_state(name, fn):
+            states[name] = fn(dict(states.get(name, {})))
+
+        def update_section(as_name, message_id, body):
+            update_attempts.append(message_id)
+            if message_id == 99 and fail_activity[0]:
+                raise SystemExit("414")
+            return message_id
+
+        store.mutate = mutate_failure_state
+        send_mod.post = lambda *args: alerts.append(args) or 200
+        send_mod.update = update_section
+        globals()["_current_content"] = lambda as_name, message_id: "old"
+        log.disabled = True
+        isolated = update_board(contents={
+            "activity": "new activity", "workshop": "new workshop", "domains": "new domains"})
+        repeated = update_board(contents={"activity": "new activity"})
+        failed_state = dict(states["board"])
+        fail_activity[0] = False
+        recovered = update_board(contents={"activity": "new activity"})
+    finally:
+        store.load, store.mutate, send_mod.post, send_mod.update = saved[:4]
+        globals()["_current_content"] = saved[4]
+        log.disabled = log_disabled
+    if isolated == {"activity": (99, None), "workshop": (100, True),
+                    "domains": (101, True)} \
+            and repeated == {"activity": (99, None)} \
+            and recovered == {"activity": (99, True)} \
+            and failed_state == {"message_id": 99, "failed": True} \
+            and states["board"] == {"message_id": 99} and len(alerts) == 1 \
+            and alerts[0][1:3] == (constants.STATUS_STREAM, constants.ALERTS_TOPIC) \
+            and prompts.BOARD_UPDATE_ALERT.format(section="activity") == alerts[0][3]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL update_board isolation: %r %r %r state=%r alerts=%r attempts=%r" %
+              (isolated, repeated, recovered, states, alerts, update_attempts))
+
     print("monitor.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0
 
@@ -670,15 +807,31 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
-    ap.add_argument("command", nargs="?", choices=("park", "unpark", "parked"))
+    ap.add_argument("--digests", action="store_true")
+    ap.add_argument("command", nargs="?", choices=("park", "unpark", "parked", "refresh"))
     ap.add_argument("channel", nargs="?")
     ap.add_argument("topic", nargs="?")
     args = ap.parse_args()
     if args.selftest:
         return _selftest()
+    if args.digests and args.command != "refresh":
+        ap.error("--digests requires refresh")
     if args.command:
         if args.json:
-            ap.error("--json does not combine with parking commands")
+            ap.error("--json does not combine with commands")
+        if args.command == "refresh":
+            if args.digests and (args.channel is not None or args.topic is not None):
+                ap.error("refresh --digests takes no channel or topic")
+            if not args.digests and ((args.channel is None) != (args.topic is None)):
+                ap.error("refresh takes both channel and topic, or neither")
+            try:
+                results = refresh_board(args.channel, args.topic, args.digests)
+            except ValueError as exc:
+                ap.error(str(exc))
+            failed_sections = [name for name, result in results.items() if result[1] is None]
+            print("refreshed board" if not failed_sections else
+                  "refresh failed: %s" % ", ".join(failed_sections))
+            return 1 if failed_sections else 0
         if args.command == "parked":
             if args.channel is not None or args.topic is not None:
                 ap.error("parked takes no channel or topic")

@@ -184,7 +184,7 @@ def safe_text(text):
 
 
 def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=None,
-                  load_fn=None, mutate_fn=None, now_ts=None):
+                  load_fn=None, mutate_fn=None, now_ts=None, force=False):
     if (topic or "").strip().startswith(constants.RESOLVED_PREFIX):
         return None
     fetch_fn = fetch_fn or fetch_delta
@@ -195,7 +195,8 @@ def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=No
         return None
     key = digest_key(stream_id, topic)
     current = bound_cached(load_fn("digests").get(key, {}))
-    messages, next_anchor, dropped = fetch_fn(as_name, stream_id, channel, topic, current)
+    messages, next_anchor, dropped = fetch_fn(
+        as_name, stream_id, channel, topic, {} if force else current)
     if not messages:
         return current or None
     rendered = validate_digest(model_fn(current, messages), messages, current)
@@ -381,6 +382,22 @@ def _selftest():
     else:
         failed += 1
         print("FAIL refresh_topic -> %r state=%r" % (refreshed, state))
+
+    forced_fetches, forced_models = [], []
+    refresh_topic(
+        "bob", 7, "setup", "topic",
+        fetch_fn=lambda *args: forced_fetches.append(args[-1]) or
+        (cases.DIGEST_MESSAGES, 22, 0),
+        model_fn=lambda previous, messages: forced_models.append((previous, messages)) or
+        cases.DIGEST_MODEL,
+        load_fn=lambda name: {"7:topic": cases.DIGEST_PREVIOUS} if name == "digests" else {},
+        mutate_fn=lambda name, fn: None, now_ts=1234, force=True)
+    if forced_fetches == [{}] and len(forced_models) == 1:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL forced refresh path -> fetches=%r models=%r" %
+              (forced_fetches, forced_models))
 
     parked_calls = []
     parked_result = refresh_topic(

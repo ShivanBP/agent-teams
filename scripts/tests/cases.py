@@ -38,6 +38,13 @@ ENCODE = [
     ({"apply_markdown": False}, "apply_markdown=false"),
 ]
 
+PATCH_REQUEST_EXPECTED = {
+    "url": "https://example/api/v1/messages/7",
+    "body": b"content=small+edit",
+    "content_type": "application/x-www-form-urlencoded",
+    "timeout": 60,
+}
+
 # (as_name, AGENT_TEAM_IDENTITY or None, should exit 2) for api.enforce_identity
 IDENTITY = [
     ("archie", None, False),
@@ -1206,6 +1213,7 @@ PROMPT_CONTAINS = [
     ("TOPIC_DIGEST", "{last_restart_fact}"),
     ("TOPIC_DIGEST", "source_ts predates last_restart_ts"),
     ("TOPIC_DIGEST_RESTART_FACT", "last_restart_ts: {last_restart_ts:.3f}"),
+    ("BOARD_UPDATE_ALERT", "{section}"),
     ("BOARD_TOPIC_ROW", "{permalink}"),
     ("BOARD_LANE", "{action}"),
     ("BOARD_ACTIVITY", "{rows}"),

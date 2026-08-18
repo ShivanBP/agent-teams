@@ -72,7 +72,7 @@ def _multipart(filename, data):
     return head + data + tail, "multipart/form-data; boundary=%s" % boundary
 
 
-def request(cfg, method, path, params=None, upload=None):
+def request(cfg, method, path, params=None, upload=None, open_fn=urllib.request.urlopen):
     """One HTTPS door. The key rides in the auth header and is never printed or logged."""
     url = cfg["site"] + path
     body = None
@@ -84,14 +84,14 @@ def request(cfg, method, path, params=None, upload=None):
     if upload is not None:
         body, ctype = _multipart(upload[0], upload[1])
         headers["Content-Type"] = ctype
-    elif method == "POST":
+    elif method in ("POST", "PATCH"):
         body = _encode(params).encode()
         headers["Content-Type"] = "application/x-www-form-urlencoded"
-    elif params:
+    elif method in ("GET", "DELETE") and params:
         url += "?" + _encode(params)
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with open_fn(req, timeout=60) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode(errors="replace")
@@ -216,6 +216,35 @@ def _selftest():
         else:
             failed += 1
             print("FAIL permalink(%r, %r, %r) -> %r, wanted %r" % (sid, sname, topic, got, expected))
+    captured = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return b'{"result":"success"}'
+
+    def open_patch(req, timeout):
+        captured.update({
+            "url": req.full_url,
+            "body": req.data,
+            "content_type": req.get_header("Content-type"),
+            "timeout": timeout,
+        })
+        return _Response()
+
+    payload = request(
+        {"site": "https://example", "email": "bot@example", "key": "secret"},
+        "PATCH", "/api/v1/messages/7", {"content": "small edit"}, open_fn=open_patch)
+    if payload == {"result": "success"} and captured == cases.PATCH_REQUEST_EXPECTED:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL PATCH request transport -> %r payload=%r" % (captured, payload))
     for asked, env, should_exit in cases.IDENTITY:
         before = os.environ.get("AGENT_TEAM_IDENTITY")
         if env is None:

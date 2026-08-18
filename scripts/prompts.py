@@ -185,6 +185,8 @@ STALL_ALERT_NO_LOOP = (
     "but no open loop was found to pause."
 )
 
+BOARD_UPDATE_ALERT = "Board section {section} failed to update; see listener.err.log."
+
 BOARD_STUCK = "STUCK"
 BOARD_UNKNOWN = "-"
 BOARD_IDLE_STATUS = "--"

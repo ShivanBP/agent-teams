@@ -1,0 +1,345 @@
+"""Offline fixtures for listener.py, run in the organ namespace."""
+
+from pathlib import Path
+import sys
+from types import FunctionType
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+def run(module):
+    return FunctionType(_body.__code__, module.__dict__)()
+
+
+def _body():
+    import tests.cases as cases
+
+    passed = failed = 0
+    for name in cases.LISTENER_LAZY_GLOBALS:
+        if name not in globals():
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL listener imported %s before runtime" % name)
+    for event, expected in cases.MENTIONS:
+        got = is_mention(event)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_mention(%r) -> %r wanted %r" % (event, got, expected))
+
+    for sender_email, persona_emails, expected in cases.PERSONA_SENDERS:
+        got = is_persona_sender(sender_email, persona_emails)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_persona_sender(%r, %r) -> %r wanted %r" %
+                  (sender_email, persona_emails, got, expected))
+
+    for topic, expected in cases.RESOLVED_TOPICS:
+        got = is_resolved_topic(topic)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_resolved_topic(%r) -> %r wanted %r" % (topic, got, expected))
+
+    dropped, parked = [], {"7:topic": 1234}
+    saved_drop, saved_mutate = store.session_drop, store.mutate
+    try:
+        store.session_drop = dropped.append
+        store.mutate = lambda name, fn: fn(parked)
+        handle_topic_resolved(cases.RESOLVED_EVENT)
+    finally:
+        store.session_drop, store.mutate = saved_drop, saved_mutate
+    if len(dropped) == len(personas.PERSONAS) and parked == {}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL resolved topic left sessions or parking: %r %r" % (dropped, parked))
+
+    for content, expected in cases.FLAG_PARSES:
+        got = parse_flags(content)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL parse_flags(%r) -> %r wanted %r" % (content, got, expected))
+
+    for identity, flags, row, matrix, expected in cases.PROVIDER_SELECTIONS:
+        got = provider_for_wake(identity, flags, row, matrix)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL provider_for_wake(%r, %r, %r) -> %r wanted %r" %
+                  (identity, flags, row, got, expected))
+
+    for identity, provider, model, effort, matrix, expected in cases.WAKE_SETTINGS:
+        try:
+            got = resolve_wake_settings(identity, provider, model, effort, matrix)
+        except RuntimeError as exc:
+            got = type(exc)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL resolve_wake_settings(%r, %r, %r, %r) -> %r wanted %r" %
+                  (identity, provider, model, effort, got, expected))
+
+    for payload, fallback_channel, fallback_topic, expected in cases.LOCATION_REFETCH:
+        got = _location_from_refetch(payload, fallback_channel, fallback_topic)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _location_from_refetch(%r, %r, %r) -> %r wanted %r" %
+                  (payload, fallback_channel, fallback_topic, got, expected))
+
+    for text, expected in cases.OPERATOR_DECISIONS:
+        got = parse_operator_decision(text)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL parse_operator_decision(%r) -> %r wanted %r" % (text, got, expected))
+
+    for msg_ts, now_ts, max_age, expected in cases.TAG_STALENESS:
+        got = is_tag_stale(msg_ts, now_ts, max_age)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL is_tag_stale(%r, %r, %r) -> %r wanted %r" % (msg_ts, now_ts, max_age, got, expected))
+
+    saved_resolution = (api.load, api.request, constants.AGENT_TEAM_MATE_EMAIL,
+                        constants.AGENT_TEAM_MATE_EMAILS, dict(_USER_IDS))
+    try:
+        for singular, holder_emails, members, expected_mate, expected_holders, expected_mention in cases.USER_ID_RESOLUTIONS:
+            calls = []
+            constants.AGENT_TEAM_MATE_EMAIL = singular
+            constants.AGENT_TEAM_MATE_EMAILS = holder_emails
+            _USER_IDS.clear()
+            api.load = lambda identity: identity
+
+            def _users_request(cfg, method, path, members=members):
+                calls.append((cfg, method, path))
+                return {"result": "success", "members": members}
+
+            api.request = _users_request
+            got = (mate_user_id("selftest"), flag_holder_user_ids("selftest"), mate_mention())
+            expected = (expected_mate, expected_holders, expected_mention)
+            if got == expected and calls == [("selftest", "GET", "/api/v1/users")]:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL user id resolution -> %r calls=%r wanted %r and one GET" %
+                      (got, calls, expected))
+    finally:
+        api.load, api.request = saved_resolution[:2]
+        constants.AGENT_TEAM_MATE_EMAIL = saved_resolution[2]
+        constants.AGENT_TEAM_MATE_EMAILS = saved_resolution[3]
+        _USER_IDS.clear()
+        _USER_IDS.update(saved_resolution[4])
+
+    # Both rails driven for real with runner.run stubbed; the stub raises so no cost row is written.
+    class _Stop(Exception):
+        pass
+
+    spawns = []
+    reacts = []
+    briefs = []
+
+    def _stub_run(persona, prompt, **kw):
+        spawns.append((persona, kw.get("identity")))
+        briefs.append(prompt)
+        raise _Stop()
+
+    receipts = []
+    saved = (runner.run, loops.loop_for_lane, loops.budget_reached, build_delta_record, log.disabled,
+             send_mod.react)
+    try:
+        log.disabled = True
+        runner.run = _stub_run
+        send_mod.react = lambda *a: reacts.append(a)
+        loops.budget_reached = lambda *a, **k: False
+        loops.loop_for_lane = lambda *a, **k: {"id": 1, "current_channel": None, "current_topic": None,
+                                               "kicks": 0, "budget": 3, "header_id": 1, "header_text": ""}
+        globals()["build_delta_record"] = lambda *a, **k: ("", None)
+        try:
+            handle_rail_a(1, "c", "t", "record", "reply")
+        except _Stop:
+            pass
+        loops.loop_for_lane = lambda *a, **k: None
+        # the fresh row is also rail B's spawn case; the stale row must return before both.
+        for label, age_min, expected in cases.OPERATOR_TAG_RECEIPTS:
+            del reacts[:]
+            handle_operator_tag({"message": {"sender_id": 7, "id": 2, "stream_id": 1, "content": "go",
+                                             "display_recipient": "c", "subject": "t",
+                                             "timestamp": time.time() - age_min * 60}}, 7)
+            receipts.append((label, list(reacts), expected))
+    finally:
+        runner.run, loops.loop_for_lane, loops.budget_reached = saved[:3]
+        globals()["build_delta_record"] = saved[3]
+        log.disabled = saved[4]
+        send_mod.react = saved[5]
+
+    for label, got, expected in receipts:
+        want = [(constants.OPERATOR_IDENTITY, 2, constants.EMOJI_RECEIPT)] * expected
+        if got == want:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s receipt -> %r wanted %r" % (label, got, want))
+
+    for i, (label, persona, identity) in enumerate(cases.OPERATOR_SPAWNS):
+        got = spawns[i] if i < len(spawns) else None
+        if got == (persona, identity):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s spawn -> %r wanted %r" % (label, got, (persona, identity)))
+
+    for i, (label, substring) in enumerate(cases.OPERATOR_BRIEF_CONTAINS):
+        got = briefs[i] if i < len(briefs) else ""
+        if substring in got:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s brief carried no state block (%r)" % (label, substring))
+
+    class _LogCapture(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            self.messages.append(record.getMessage())
+
+    for index, (label, sender_id, holder_ids, content, expected_flags, log_substring) in enumerate(
+            cases.FLAG_HOLDER_WAKES):
+        selected_flags = []
+        capture = _LogCapture()
+        old_level = log.level
+        saved_wake = (runner.run, runner.wake_cwd, send_mod.react, send_mod.post,
+                      build_delta_record, provider_for_wake)
+
+        def _capture_provider(identity, flags, row):
+            selected_flags.append(list(flags))
+            return "claude"
+
+        try:
+            log.setLevel(logging.INFO)
+            log.addHandler(capture)
+            runner.run = _stub_run
+            runner.wake_cwd = lambda *a, **k: (None, "")
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            globals()["provider_for_wake"] = _capture_provider
+            handle_wake("bob", {"message": {"stream_id": "selftest-holder-%d" % index,
+                                              "subject": label, "display_recipient": "c",
+                                              "content": content, "sender_id": sender_id,
+                                              "id": 20 + index}}, holder_ids)
+        finally:
+            log.removeHandler(capture)
+            log.setLevel(old_level)
+            runner.run, runner.wake_cwd = saved_wake[:2]
+            send_mod.react, send_mod.post = saved_wake[2:4]
+            globals()["build_delta_record"] = saved_wake[4]
+            globals()["provider_for_wake"] = saved_wake[5]
+        logged = log_substring is None or any(log_substring in message for message in capture.messages)
+        if selected_flags == [expected_flags] and logged:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s selected flags %r logs=%r wanted %r log=%r" %
+                  (label, selected_flags, capture.messages, expected_flags, log_substring))
+
+    # The wake-failure path driven for real, everything outward stubbed: the run raises, and the
+    # lane's dead session must be gone before any retry can resume it.
+    for lane, session, error, expected in cases.WAKE_SESSION_CLEARED_ON_FAILURE:
+        stream_id, topic, identity = lane.split(":")
+        store.session_set(lane, *session)
+        run_lanes = []
+
+        def _raise_run(*a, **k):
+            run_lanes.append(k.get("lane"))
+            raise error
+
+        saved_wake = (runner.run, runner.wake_cwd, send_mod.react, send_mod.post,
+                      build_delta_record, log.disabled)
+        try:
+            log.disabled = True
+            runner.run = _raise_run
+            runner.wake_cwd = lambda *a, **k: (None, "")
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            handle_wake(identity, {"message": {"stream_id": stream_id, "subject": topic,
+                                               "display_recipient": "c", "content": "go",
+                                               "sender_id": 7, "id": 3}}, frozenset())
+        finally:
+            runner.run, runner.wake_cwd = saved_wake[0], saved_wake[1]
+            send_mod.react, send_mod.post = saved_wake[2], saved_wake[3]
+            globals()["build_delta_record"] = saved_wake[4]
+            log.disabled = saved_wake[5]
+        got = store.session_get(lane)
+        store.session_drop(lane)
+        if got == expected and run_lanes == [lane]:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL wake failure on lane %s left session %r, passed lanes %r wanted %r, [%r]" %
+                  (lane, got, run_lanes, expected, lane))
+
+    board_updates = []
+    old_inflight, old_update = store.inflight_all, monitor.update_board
+    try:
+        store.inflight_all = lambda: {}
+        monitor.update_board = lambda: board_updates.append(True)
+        stall_sweep_once(now_ts=1000)
+    finally:
+        store.inflight_all, monitor.update_board = old_inflight, old_update
+    if board_updates == [True]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL stall_sweep_once did not tail-call the board update")
+
+    sweep_threads = []
+
+    class _Thread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            sweep_threads.append(self.kwargs)
+
+    start_sweep_threads(_Thread)
+    got_threads = [(row["name"], row["target"], row["daemon"]) for row in sweep_threads]
+    if got_threads == [("stall-sweep", stall_sweep_thread, True),
+                       ("todo-sweep", todo.sweep_thread, True)]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL sweep thread startup -> %r" % (got_threads,))
+
+    digest_calls = []
+    old_stream_id, old_refresh = api.stream_id, digest.refresh_topic
+    try:
+        api.stream_id = lambda identity, channel: 7
+        digest.refresh_topic = lambda *args: digest_calls.append(args) or "ok"
+        got_digest = refresh_topic_digest("bob", "setup", "topic")
+    finally:
+        api.stream_id, digest.refresh_topic = old_stream_id, old_refresh
+    if got_digest == "ok" and digest_calls == [("bob", 7, "setup", "topic")]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL post-wake digest trigger -> %r calls=%r" % (got_digest, digest_calls))
+
+    print("listener.py selftest: %d PASS, %d FAIL" % (passed, failed))
+    return 1 if failed else 0

@@ -17,6 +17,8 @@ HARNESS_DEFAULTS_PATH = REPO_DIR / "config" / "harness-defaults.json"
 HARNESS_DEFAULTS_EXAMPLE_PATH = REPO_DIR / "config" / "harness-defaults.example.json"
 MODEL_EFFORT_DEFAULTS_PATH = REPO_DIR / "config" / "model-effort-defaults.json"
 MODEL_EFFORT_DEFAULTS_EXAMPLE_PATH = REPO_DIR / "config" / "model-effort-defaults.example.json"
+RAILS_PATH = REPO_DIR / "config" / "rails.json"
+RAILS_EXAMPLE_PATH = REPO_DIR / "config" / "rails.example.json"
 
 
 def _load_json_object(path, example_path, label):
@@ -56,9 +58,14 @@ def _load_model_effort_defaults():
         "model effort defaults")
 
 
+def _load_rails():
+    return _load_json_object(RAILS_PATH, RAILS_EXAMPLE_PATH, "rails")
+
+
 _MATRIX = _load_matrix()
 HARNESS_DEFAULTS = _load_harness_defaults()
 MODEL_EFFORT_DEFAULTS = _load_model_effort_defaults()
+_RAILS = _load_rails()
 
 _EFFORT_SCALE = {
     "low": {"claude": "low", "codex": "low", "opencode": "low", "agy": "low"},
@@ -85,6 +92,15 @@ def matrix_defaults(persona):
         return dict(_MATRIX[persona])
     except KeyError:
         raise RuntimeError("persona %r is absent from the matrix" % persona)
+
+
+def rail_defaults(rail):
+    """The operator rails' settings. Their own file, not the matrix: matrix keys are the fleet
+    roster, and a rail is not a persona."""
+    try:
+        return dict(_RAILS[rail])
+    except KeyError:
+        raise RuntimeError("rail %r is absent from the rails config" % rail)
 
 
 def _num(name, default, cast):

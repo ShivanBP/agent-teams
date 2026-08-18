@@ -73,6 +73,34 @@ def _body():
         failed += 1
         print("FAIL model effort defaults example does not load: %s" % exc)
 
+    try:
+        rails = json.loads(RAILS_EXAMPLE_PATH.read_text())
+        valid_rows = all(
+            isinstance(row, dict) and set(row) == {"provider", "model", "effort"}
+            and row["effort"] in _EFFORT_SCALE
+            and row["provider"] in _EFFORT_SCALE[row["effort"]]
+            for row in rails.values()
+        )
+        if set(rails) == {"operator", "operator-reply"} and valid_rows:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL rails example keys or rows are invalid")
+    except (OSError, ValueError) as exc:
+        failed += 1
+        print("FAIL rails example does not load: %s" % exc)
+
+    for rail, expected in cases.RAIL_DEFAULTS:
+        try:
+            got = set(rail_defaults(rail))
+        except RuntimeError as exc:
+            got = type(exc)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL rail_defaults(%r) -> %r wanted %r" % (rail, got, expected))
+
     for provider, level, expected in cases.EFFORT_TRANSLATIONS:
         try:
             got = translate_effort(provider, level)

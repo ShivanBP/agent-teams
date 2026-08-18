@@ -26,12 +26,13 @@ topics are the exception, they are never resolved. The flags -opus -fable -sonne
 
 Loops: header before kick one; `loops.py kick` fires kick one so the ledger row lands
 before the post; every kick ends "kick n/N" and mentions its persona; the budget floor is
-atomic; the operator continuation (opus) answers with one KICK or CLOSE line and anything
+atomic; the operator continuation answers with one KICK or CLOSE line and anything
 else is discarded unread.
 
 Every string the machinery posts or injects lives in scripts/prompts.py; tunables in
-scripts/constants.py. Persona, harness, and model-effort defaults live in the three JSON files
-under config/; copy each tracked `.example.json` to its gitignored live name on first setup.
+scripts/constants.py. Persona, harness, model-effort and operator-rail defaults live in the
+four JSON files under config/, rails.json holding both rails; copy each tracked `.example.json`
+to its gitignored live name on first setup.
 Every effort in those files uses low/mid/high/xtra. A posted string literal anywhere else is
 a bug. Every module carries --selftest, offline; bodies live in `scripts/tests/`; a test body
 imports what it uses; a case table changes in the same commit as its organ.

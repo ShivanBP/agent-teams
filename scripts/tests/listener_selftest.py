@@ -106,6 +106,23 @@ def _body():
             print("FAIL resolve_wake_settings(%r, %r, %r, %r) -> %r wanted %r" %
                   (identity, provider, model, effort, got, expected))
 
+    for rails, expect_exit in cases.RAIL_BOOTS:
+        def lookup(rail, rails=rails):
+            try:
+                return dict(rails[rail])
+            except KeyError:
+                raise RuntimeError("rail %r is absent from the rails config" % rail)
+        try:
+            check_rails(lookup)
+            exited = False
+        except SystemExit:
+            exited = True
+        if exited == expect_exit:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL check_rails(%r) -> exited=%s wanted %s" % (rails, exited, expect_exit))
+
     for payload, fallback_channel, fallback_topic, expected in cases.LOCATION_REFETCH:
         got = _location_from_refetch(payload, fallback_channel, fallback_topic)
         if got == expected:

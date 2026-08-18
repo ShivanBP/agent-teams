@@ -181,7 +181,7 @@ def _append_cost(persona, lane, result, model=None, level=None):
         "input_tokens": result.usage.get("input_tokens", 0),
         "provider": result.provider,
         # the footer's own two fields, in the fleet's effort words, so a posted stamp is
-        # checkable against the ledger; the operator rails ask for neither and store null.
+        # checkable against the ledger; a kick posts no footer, so its row is the only stamp.
         "model": model,
         "effort": level,
     }
@@ -488,13 +488,17 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
         record=record or "",
     )
     # both operator rails spawn under the bridge identity, or the two grow separate memory trees.
+    # settings come from config/rails.json, the one source: the agent frontmatter carries none.
     try:
-        result = runner.run("operator", brief, provider="claude", identity=constants.OPERATOR_IDENTITY)
+        rail = constants.rail_defaults("operator")
+        result = runner.run("operator", brief, provider=rail["provider"], model=rail["model"],
+                            effort=constants.translate_effort(rail["provider"], rail["effort"]),
+                            identity=constants.OPERATOR_IDENTITY)
     except (Exception, SystemExit) as exc:
         log.exception("operator continuation run failed for loop %s", loop_id)
         _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc, dest_channel, dest_topic)
         return
-    _append_cost("operator", dest_topic, result)
+    _append_cost("operator", dest_topic, result, rail["model"], rail["effort"])
     decision = parse_operator_decision(result.reply)
     if decision is None:
         log.info("operator reply for loop %s did not parse to a decision; loop left untouched; reply was: %r",
@@ -568,16 +572,17 @@ def handle_operator_tag(event, mate_id):
     try:
         # the seat runs as the operator-reply agent but posts as bridge (decision 1, plan of
         # record): AGENT_TEAM_IDENTITY=bridge is what lets it call send.py --as bridge itself.
-        result = runner.run("operator-reply", brief, provider="claude",
+        rail = constants.rail_defaults("operator-reply")
+        result = runner.run("operator-reply", brief, provider=rail["provider"], model=rail["model"],
+                            effort=constants.translate_effort(rail["provider"], rail["effort"]),
                             identity=constants.OPERATOR_IDENTITY)
-        _append_cost("operator-reply", topic, result)
+        _append_cost("operator-reply", topic, result, rail["model"], rail["effort"])
         # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
         # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
-        # Rail B asks for no model or effort, so those two fields stamp as '-': the footer reports
-        # what the runner was told, and this rail tells it nothing.
+        # The footer stamps what the runner was told, in the fleet's effort word, same as a wake's.
         _post_at_current_location(constants.OPERATOR_IDENTITY, message_id, channel, topic, result.reply,
-                                   prompts.wake_footer(result.provider, None, None, result.session_id,
-                                                       result.degraded))
+                                   prompts.wake_footer(result.provider, rail["model"], rail["effort"],
+                                                       result.session_id, result.degraded))
     except (Exception, SystemExit) as exc:
         log.exception("operator-reply run failed for tag message %s", message_id)
         _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, exc, channel, topic, message_id)
@@ -812,9 +817,23 @@ def run_identity(identity, persona_emails):
     )
 
 
+def check_rails(lookup=constants.rail_defaults):
+    """Resolves both rail rows once at boot, so a rails.json missing a key, missing a field, or
+    naming an effort its provider has no scale for stops restart.sh instead of a live wake."""
+    for rail in ("operator", "operator-reply"):
+        try:
+            row = lookup(rail)
+            constants.translate_effort(row["provider"], row["effort"])
+            log.info("rail %s: provider=%s model=%s effort=%s",
+                     rail, row["provider"], row["model"], row["effort"])
+        except (RuntimeError, KeyError) as exc:
+            raise SystemExit("rails config unusable for %s: %s" % (rail, exc))
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log.info("agent-team listener starting: identities=%s", IDENTITIES)
+    check_rails()
     persona_emails = frozenset(api.load(identity)["email"] for identity in personas.PERSONAS)
     start_sweep_threads()
     threads = []

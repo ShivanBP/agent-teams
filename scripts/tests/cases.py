@@ -634,6 +634,25 @@ WAKE_SETTINGS = [
     ("bob", "agy", None, "xtra", TEST_MATRIX, RuntimeError),
 ]
 
+# (rail, expected key set or exception) for constants.rail_defaults. The live rails.json may
+# differ from the example, so the rows pin the row shape and the absent-key raise, not values;
+# "bob" is here to prove the roster and the rails file are separate lookups.
+RAIL_DEFAULTS = [
+    ("operator", {"provider", "model", "effort"}),
+    ("operator-reply", {"provider", "model", "effort"}),
+    ("bob", RuntimeError),
+]
+
+# (rails mapping, expect_exit) for listener.check_rails: a rail absent, a field missing, or an
+# effort its provider has no scale for must stop the boot rather than a live wake.
+_RAIL_ROW = {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"}
+RAIL_BOOTS = [
+    ({"operator": _RAIL_ROW, "operator-reply": _RAIL_ROW}, False),
+    ({"operator": _RAIL_ROW}, True),
+    ({"operator": _RAIL_ROW, "operator-reply": {"provider": "agy", "effort": "high"}}, True),
+    ({"operator": dict(_RAIL_ROW, effort="xtra"), "operator-reply": _RAIL_ROW}, True),
+]
+
 EFFORT_TRANSLATIONS = [
     ("claude", "low", "low"),
     ("codex", "low", "low"),

@@ -9,6 +9,8 @@ daemon path (store, personas, prompts, runner, loops) stays stdlib.
 
 import argparse
 import logging
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -583,32 +585,83 @@ def handle_operator_tag(event, mate_id):
 
 # --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----
 
+def stalled_wake(lane, now_ts, run=subprocess.run, own_pid=os.getpid):
+    """Return report fields only when a quiet wake log has no TCP-active holder."""
+    wake_log = runner._wake_log_path(lane)
+    try:
+        quiet_s = max(0, now_ts - wake_log.stat().st_mtime)
+    except OSError:
+        return None
+    if quiet_s <= constants.STALL_MIN * 60:
+        return None
+
+    try:
+        holders = run([constants.LSOF_BIN, "-t", "--", str(wake_log)],
+                      capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        log.exception("failed to inspect wake-log holders for lane %s", lane)
+        return None
+    if holders.returncode not in (0, 1):
+        log.warning("lsof failed inspecting wake-log holders for lane %s: %s",
+                    lane, holders.stderr.strip())
+        return None
+    pids = []
+    for raw in holders.stdout.splitlines():
+        try:
+            pid = int(raw)
+        except ValueError:
+            continue
+        # The listener holds the redirected output file beside its harness child.
+        if pid != own_pid():
+            pids.append(pid)
+    if not pids:
+        return None
+
+    for pid in pids:
+        try:
+            sockets = run([constants.LSOF_BIN, "-a", "-p", str(pid), "-iTCP", "-Fn"],
+                          capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            log.exception("failed to inspect TCP sockets for lane %s pid %s", lane, pid)
+            return None
+        if sockets.returncode not in (0, 1):
+            log.warning("lsof failed inspecting TCP sockets for lane %s pid %s: %s",
+                        lane, pid, sockets.stderr.strip())
+            return None
+        if any(line.startswith("n") for line in sockets.stdout.splitlines()):
+            return None
+    return {"pid": pids[0], "quiet_s": quiet_s, "wake_log": str(wake_log)}
+
 def stall_sweep_once(now_ts=None):
-    """Pause first, then alert (finding 9): the alert text must never claim a pause that did not
-    happen, so whether a loop actually got paused decides which line goes out."""
+    """Finish every local stall check before best-effort Zulip posts and the board update."""
     now_ts = now_ts if now_ts is not None else time.time()
-    threshold = constants.STALL_MIN * 60
+    alerts = []
     for lane, info in list(store.inflight_all().items()):
-        ts = info.get("ts")
-        if ts is None or info.get("alerted") or (now_ts - ts) <= threshold:
+        if info.get("alerted"):
+            continue
+        hit = stalled_wake(lane, now_ts)
+        if hit is None:
             continue
 
         stream_id = info.get("stream_id")
         topic = info.get("topic")
-        paused = False
         if stream_id is not None and topic is not None:
             loop = loops.loop_for_lane(constants.OPERATOR_IDENTITY, stream_id, topic)
             if loop is not None and loop.get("status") == loops.STATUS_OPEN:
                 loops.pause(loop["id"])
-                paused = True
                 log.info("paused loop %s: stall on lane %s", loop["id"], lane)
 
-        template = prompts.STALL_ALERT if paused else prompts.STALL_ALERT_NO_LOOP
+        alerts.append((lane, hit))
+
+    for lane, hit in alerts:
         try:
             send_mod.post(constants.OPERATOR_IDENTITY, constants.STATUS_STREAM, constants.ALERTS_TOPIC,
-                           template.format(lane=lane, stall_min=constants.STALL_MIN))
+                           prompts.STALLED_WAKE_ALERT.format(
+                               lane=lane, pid=hit["pid"], quiet_min=int(hit["quiet_s"] // 60),
+                               wake_log=hit["wake_log"]))
         except (Exception, SystemExit):
             log.exception("failed to post stall alert for lane %s", lane)
+            continue
 
         def fn(data, lane=lane):
             if lane in data:

@@ -178,14 +178,8 @@ def open_fence(text):
 
 # --- operator and alert lines (Phase 2/3) -----------------------------------------------------
 
-STALL_ALERT = (
-    "Lane {lane} has been inflight for over {stall_min} minutes with no write-back; the loop "
-    "is paused pending a look."
-)
-
-STALL_ALERT_NO_LOOP = (
-    "Lane {lane} has been inflight for over {stall_min} minutes with no write-back; it is stale "
-    "but no open loop was found to pause."
+STALLED_WAKE_ALERT = (
+    "Stalled wake: lane {lane}; pid {pid}; quiet {quiet_min}m; wake log {wake_log}"
 )
 
 BOARD_UPDATE_ALERT = "Board section {section} failed to update; see listener.err.log."

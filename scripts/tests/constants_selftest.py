@@ -21,6 +21,13 @@ def _body():
     import prompts
 
     passed = failed = 0
+    if STALL_MIN == cases.STALL_MIN_DEFAULT:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL STALL_MIN default -> %r wanted %r" %
+              (STALL_MIN, cases.STALL_MIN_DEFAULT))
+
     try:
         example = json.loads(MATRIX_EXAMPLE_PATH.read_text())
         valid_rows = all(

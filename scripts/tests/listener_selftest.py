@@ -13,7 +13,10 @@ def run(module):
 
 def _body():
     import logging
+    import os
+    import tempfile
     import time
+    from pathlib import Path
 
     import api
     import constants
@@ -356,19 +359,94 @@ def _body():
             print("FAIL wake failure on lane %s left session %r, passed lanes %r wanted %r, [%r]" %
                   (lane, got, run_lanes, expected, lane))
 
+    with tempfile.TemporaryDirectory() as root:
+        wake_log = Path(root) / "wake.jsonl"
+        wake_log.write_text("event\n")
+        old_path = runner._wake_log_path
+        old_case_log_disabled = log.disabled
+        try:
+            log.disabled = True
+            runner._wake_log_path = lambda lane: wake_log
+            for mtime, holder_result, socket_results, expected in cases.STALLED_WAKE_CHECKS:
+                os.utime(wake_log, (mtime, mtime))
+                calls = []
+
+                class _Result:
+                    def __init__(self, returncode, stdout):
+                        self.returncode = returncode
+                        self.stdout = stdout
+                        self.stderr = ""
+
+                def _run(cmd, **kwargs):
+                    calls.append(cmd)
+                    if "-iTCP" not in cmd:
+                        return _Result(*holder_result)
+                    return _Result(*socket_results[int(cmd[cmd.index("-p") + 1])])
+
+                got = stalled_wake("lane", 1000, run=_run, own_pid=lambda: 100)
+                if got is not None:
+                    got["wake_log"] = Path(got["wake_log"]).name
+                if got == expected:
+                    passed += 1
+                else:
+                    failed += 1
+                    print("FAIL stalled_wake mtime=%r calls=%r -> %r wanted %r" %
+                          (mtime, calls, got, expected))
+        finally:
+            runner._wake_log_path = old_path
+            log.disabled = old_case_log_disabled
+
     board_updates = []
-    old_inflight, old_update = store.inflight_all, monitor.update_board
+    sweep_events = []
+    inflight = {
+        "lane-a": {"stream_id": 1, "topic": "one"},
+        "lane-b": {"stream_id": 2, "topic": "two"},
+    }
+    old_inflight, old_update, old_stalled = store.inflight_all, monitor.update_board, stalled_wake
+    old_post, old_loop, old_mutate = send_mod.post, loops.loop_for_lane, store.mutate
+    old_log_disabled = log.disabled
     try:
-        store.inflight_all = lambda: {}
+        store.inflight_all = lambda: inflight
         monitor.update_board = lambda: board_updates.append(True)
+        globals()["stalled_wake"] = lambda lane, now: (
+            sweep_events.append("check:" + lane) or
+            ({"pid": 12, "quiet_s": 601, "wake_log": "/tmp/wake"}
+             if lane == "lane-a" else None))
+        loops.loop_for_lane = lambda *a: None
+        send_mod.post = lambda *a: sweep_events.append("post:" + a[3])
+        store.mutate = lambda name, fn: fn(inflight)
+        stall_sweep_once(now_ts=1000)
+
+        retry_inflight = {"lane-c": {"stream_id": 3, "topic": "three"}}
+        store.inflight_all = lambda: retry_inflight
+        globals()["stalled_wake"] = lambda lane, now: {
+            "pid": 13, "quiet_s": 700, "wake_log": "/tmp/retry"}
+
+        def _fail_post(*args):
+            sweep_events.append("post-failed")
+            raise RuntimeError("offline")
+
+        log.disabled = True
+        send_mod.post = _fail_post
         stall_sweep_once(now_ts=1000)
     finally:
         store.inflight_all, monitor.update_board = old_inflight, old_update
-    if board_updates == [True]:
+        globals()["stalled_wake"] = old_stalled
+        send_mod.post, loops.loop_for_lane, store.mutate = old_post, old_loop, old_mutate
+        log.disabled = old_log_disabled
+    expected_alert = prompts.STALLED_WAKE_ALERT.format(
+        lane="lane-a", pid=12, quiet_min=10, wake_log="/tmp/wake")
+    if (board_updates == [True, True]
+            and sweep_events == ["check:lane-a", "check:lane-b", "post:" + expected_alert,
+                                 "post-failed"]
+            and inflight["lane-a"].get("alerted") is True
+            and "alerted" not in inflight["lane-b"]
+            and "alerted" not in retry_inflight["lane-c"]):
         passed += 1
     else:
         failed += 1
-        print("FAIL stall_sweep_once did not tail-call the board update")
+        print("FAIL stall_sweep_once order=%r board=%r inflight=%r" %
+              (sweep_events, board_updates, inflight))
 
     sweep_threads = []
 

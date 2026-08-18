@@ -706,6 +706,20 @@ MONITOR_LANE_EXPECTED = [
      "last_action": "writing reply", "stuck": False},
 ]
 
+STALL_MIN_DEFAULT = 10
+
+# (mtime, holders rc/stdout, sockets by pid, expected hit)
+STALLED_WAKE_CHECKS = [
+    (500, (0, "100\n200\n"), {200: (1, "")}, None),
+    (100, (1, ""), {}, None),
+    (100, (2, ""), {}, None),
+    (100, (0, "100\n200\n"), {200: (0, "p200\nn10.0.0.1:443\n")}, None),
+    (100, (0, "100\n200\n"), {200: (1, "")},
+     {"pid": 200, "quiet_s": 900, "wake_log": "wake.jsonl"}),
+    (100, (0, "100\n200\n201\n"), {200: (1, ""), 201: (0, "p201\nn10.0.0.2:443\n")},
+     None),
+]
+
 MONITOR_AGES = [
     (None, "-"),
     (0, "0m"),

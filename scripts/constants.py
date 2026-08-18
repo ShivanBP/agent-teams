@@ -130,7 +130,8 @@ def _load_dotenv():
 
 _load_dotenv()
 
-STALL_MIN = _num("STALL_MIN", 30, int)
+STALL_MIN = _num("STALL_MIN", 10, int)
+LSOF_BIN = os.environ.get("LSOF_BIN", "/usr/sbin/lsof")
 BOARD_TOPIC_DAYS = _num("BOARD_TOPIC_DAYS", 7, int)
 DIGEST_SWEEP_MIN = _num("DIGEST_SWEEP_MIN", 360, int)
 DIGEST_MODEL = "sonnet"

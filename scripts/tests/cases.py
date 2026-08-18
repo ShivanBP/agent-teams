@@ -782,6 +782,14 @@ TODO_COMMAND_CONTAINS = [
     "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence",
 ]
 
+TODO_MODEL_JSON = [
+    ('{"summary":"ok","items":[]}', {"summary": "ok", "items": []}),
+    ('```json\n{"summary":"ok","items":[]}\n```', {"summary": "ok", "items": []}),
+    ('prose\n{"summary":"bad","items":[]}', None),
+    ('```python\n{"summary":"bad","items":[]}\n```', None),
+    ('```json\n{"summary":"bad","items":[]}\n```\nprose', None),
+]
+
 TODO_RUN_MESSAGES = [{"id": 22, "permalink": "https://example/22"}]
 TODO_RUN_MODEL = [
     {"title": "new work", "permalink": "https://example/22", "why": "undone"},

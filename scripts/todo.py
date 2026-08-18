@@ -112,6 +112,13 @@ def _record_cost(envelope, lane, cost_fn):
     cost_fn(row)
 
 
+def parse_model_json(result):
+    text = result.strip()
+    if text.startswith("```json\n") and text.endswith("\n```"):
+        text = text[len("```json\n"):-len("\n```")]
+    return json.loads(text)
+
+
 def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cost_append):
     def invoke(path):
         proc = run(
@@ -125,7 +132,7 @@ def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cos
             raise ValueError("todo sweep model returned no JSON result string")
         if lane is not None:
             _record_cost(envelope, lane, cost_fn)
-        return json.loads(result)
+        return parse_model_json(result)
 
     if cwd is not None:
         return invoke(cwd)
@@ -244,6 +251,19 @@ def _selftest():
     import tests.cases as cases
 
     passed = failed = 0
+    model_json_ok = True
+    for raw, expected in cases.TODO_MODEL_JSON:
+        try:
+            got = parse_model_json(raw)
+        except ValueError:
+            got = None
+        if got != expected:
+            model_json_ok = False
+            print("FAIL parse_model_json %r -> %r wanted %r" % (raw, got, expected))
+    if model_json_ok:
+        passed += 1
+    else:
+        failed += 1
     kept, dropped = cap_messages(cases.TODO_CAP_INPUT, cases.TODO_CAP_CHARS)
     if kept == cases.TODO_CAP_EXPECTED and dropped == cases.TODO_CAP_DROPPED:
         passed += 1

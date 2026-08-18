@@ -833,6 +833,28 @@ DIGEST_FILTER_EXPECTED = {
     ],
 }
 
+DIGEST_BOUND_MESSAGES = [
+    {"id": number, "permalink": "https://example/%d" % number}
+    for number in range(1, 11)
+]
+DIGEST_BOUND_MODEL = {
+    "summary": "s" * 121,
+    "items": [
+        {"done": number > 6, "text": ("item-%d-" % number) + "x" * 100,
+         "permalink": "https://example/%d" % number}
+        for number in range(1, 11)
+    ],
+}
+DIGEST_BOUND_INPUT = (DIGEST_BOUND_MODEL, DIGEST_BOUND_MESSAGES, {})
+DIGEST_BOUND_EXPECTED = {
+    "summary": "s" * 120,
+    "items": [
+        dict(DIGEST_BOUND_MODEL["items"][number - 1],
+             text=DIGEST_BOUND_MODEL["items"][number - 1]["text"][:100])
+        for number in (1, 2, 3, 4, 5, 9, 10)
+    ],
+}
+
 DIGEST_BAD_ROOTS = [
     ([], DIGEST_MESSAGES, DIGEST_PREVIOUS),
     ({"summary": "only"}, DIGEST_MESSAGES, DIGEST_PREVIOUS),

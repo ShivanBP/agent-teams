@@ -44,6 +44,10 @@ def model_call(previous, messages, run_model_fn=todo.run_model):
     prompt = prompts.TOPIC_DIGEST.format(
         previous=json.dumps(previous or {}, ensure_ascii=False, sort_keys=True),
         messages=json.dumps(messages, ensure_ascii=False, sort_keys=True),
+        summary_max=constants.DIGEST_SUMMARY_MAX,
+        item_max=constants.DIGEST_ITEM_MAX,
+        open_max=constants.DIGEST_OPEN_MAX,
+        done_max=constants.DIGEST_DONE_MAX,
     )
     return run_model_fn(prompt, lane="digest")
 
@@ -58,7 +62,7 @@ def validate_digest(payload, messages, previous):
     allowed.update(
         row.get("permalink") for row in (previous or {}).get("items", [])
         if isinstance(row, dict) and isinstance(row.get("permalink"), str))
-    items = []
+    candidates = []
     seen = set()
     for row in payload["items"]:
         if not isinstance(row, dict) or set(row) != {"done", "text", "permalink"}:
@@ -68,8 +72,16 @@ def validate_digest(payload, messages, previous):
                 or row["permalink"] in seen:
             continue
         seen.add(row["permalink"])
-        items.append(dict(row))
-    return {"summary": payload["summary"].strip(), "items": items}
+        candidates.append(dict(row, text=row["text"].strip()[:constants.DIGEST_ITEM_MAX]))
+    open_items = [row for row in candidates if not row["done"]][:constants.DIGEST_OPEN_MAX]
+    done_rows = [row for row in candidates if row["done"]]
+    done_items = done_rows[-constants.DIGEST_DONE_MAX:] if constants.DIGEST_DONE_MAX else []
+    kept = {id(row) for row in open_items + done_items}
+    items = [row for row in candidates if id(row) in kept]
+    return {
+        "summary": payload["summary"].strip()[:constants.DIGEST_SUMMARY_MAX],
+        "items": items,
+    }
 
 
 def safe_text(text):
@@ -142,6 +154,8 @@ def _selftest():
     model_calls = []
     model_call({}, [], run_model_fn=lambda prompt, lane: model_calls.append((prompt, lane)) or {})
     if len(model_calls) == 1 and model_calls[0][1] == "digest" \
+            and "at most 120 characters" in model_calls[0][0] \
+            and "at most 5 open items and 2 newest done items" in model_calls[0][0] \
             and "Prior digest:\n{}" in model_calls[0][0]:
         passed += 1
     else:
@@ -153,6 +167,13 @@ def _selftest():
     else:
         failed += 1
         print("FAIL validate_digest -> %r wanted %r" % (got, cases.DIGEST_FILTER_EXPECTED))
+    bounded = validate_digest(*cases.DIGEST_BOUND_INPUT)
+    if bounded == cases.DIGEST_BOUND_EXPECTED:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL validate_digest bounds -> %r wanted %r" %
+              (bounded, cases.DIGEST_BOUND_EXPECTED))
     if all(validate_digest(*row) is None for row in cases.DIGEST_BAD_ROOTS):
         passed += 1
     else:

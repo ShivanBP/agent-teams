@@ -4,7 +4,7 @@ The Zulip fleet: the personas in the persona matrix plus the bridge identity, wo
 through scripts/listener.py. Plan of record: plans/2026-08-12-zulip-migration-final.md. The Discord
 predecessor a-team was retired and deleted 2026-08-16; its history lives at soto-mate/a-team.
 
-Zulip working rules and the permissions ledger live in README.md.
+Zulip working rules and the permissions ledger live in docs/OPERATING.md.
 
 The word is persona, in code and prose. No em-dashes anywhere. Minimal, clean, terse:
 comments earn their lines, and a file Mate cannot read end to end is too long.
@@ -84,8 +84,8 @@ vocabulary: no koans, no Buddhist terms in work product.
 Substantive batches run the verification loop: a builder lands, Jan reads the diffs against
 the brief and Eve gates from outside in parallel, findings earn one scoped round, then a
 re-check of only the fixes. Plans end with their load-bearing unknowns named. A plan that sets
-a rule names the rule's delivery mechanism (WAKE_HEADER, AGENTS.md, a persona file, or README
-plus who fetches it); text in a file no wake loads is dead text.
+a rule names the rule's delivery mechanism (WAKE_HEADER, AGENTS.md, a persona file, or
+docs/OPERATING.md plus who fetches it); text in a file no wake loads is dead text.
 
 A feature runs in one topic in #setup, design through build to verification: terms of
 record, the builder's kick, and the verification reports all land where the design lives.

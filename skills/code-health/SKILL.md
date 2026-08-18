@@ -14,10 +14,10 @@ it stops being safe to run whenever anyone wants a reading.
 
 ## Read first
 
-`AGENTS.md` at the repo root, every time, plus `README.md` where `AGENTS.md` delegates to it.
-Derive the invariant list from those two, and open the report with how many you derived. That
-count is the only thing telling a later reader whether the run measured the repo's rules or a
-stale copy of them.
+`AGENTS.md` at the repo root, every time, plus `docs/OPERATING.md` where `AGENTS.md`
+delegates to it. Derive the invariant list from those two, and open the report with how many
+you derived. That count is the only thing telling a later reader whether the run measured the
+repo's rules or a stale copy of them.
 
 ## Method
 

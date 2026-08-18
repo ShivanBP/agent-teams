@@ -390,6 +390,18 @@ def _body():
         globals()["REPO_DIR"] = original_repo_dir
         log.disabled = False
 
+    # Every tracked config example needs its live file linked into the worktree, or a build wake
+    # silently reads the example. rails.json was missed once already.
+    unlinked = sorted(
+        "config/" + path.name.replace(".example.json", ".json")
+        for path in (REPO_DIR / "config").glob("*.example.json")
+        if "config/" + path.name.replace(".example.json", ".json") not in _WORKTREE_LINKS)
+    if not unlinked:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL config files missing from _WORKTREE_LINKS: %s" % ", ".join(unlinked))
+
     log.disabled = True
     for failed_args, behind, expected, expected_args in cases.WORKTREE_REFRESHES:
         calls = []

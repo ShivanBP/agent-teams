@@ -30,9 +30,9 @@ files to begin:
 cp agents.examples/*.md agents/
 ```
 
-Rename and rewrite the chosen personas. Keep each filename, its frontmatter `name`, the
-`PERSONAS` tuple in `scripts/personas.py`, and the persona matrix keys identical. Remove
-unused starter rows.
+Rename and rewrite the chosen personas. Keep each filename, its frontmatter `name`, and the
+persona matrix keys identical: the matrix is the roster, and `scripts/personas.py` reads it.
+Remove unused starter rows.
 
 Create the live, gitignored config files and edit them:
 

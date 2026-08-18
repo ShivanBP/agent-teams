@@ -507,10 +507,10 @@ def _worktree_add(path, branch):
     constants.WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
     has_branch = subprocess.run(
         ["git", "-C", str(REPO_DIR), "rev-parse", "--verify", "--quiet", branch],
-        capture_output=True, text=True, timeout=60).returncode == 0
+        capture_output=True, text=True, timeout=constants.GIT_CMD_TIMEOUT).returncode == 0
     cmd = ["git", "-C", str(REPO_DIR), "worktree", "add"]
     cmd += [str(path), branch] if has_branch else ["-b", branch, str(path)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=constants.GIT_CMD_TIMEOUT)
     if proc.returncode != 0:
         raise RuntimeError("git worktree add failed (exit %d): %s" %
                            (proc.returncode, _failure_output(proc.stderr, proc.stdout)))
@@ -540,7 +540,7 @@ def _refresh_worktree(path):
                           (path, ("rebase", "origin/main"))):
             proc = subprocess.run(
                 ["git", "-C", str(cwd)] + list(args),
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=constants.GIT_CMD_TIMEOUT)
             if proc.returncode != 0:
                 raise RuntimeError("git %s failed (exit %d): %s" %
                                    (" ".join(args), proc.returncode,
@@ -551,13 +551,13 @@ def _refresh_worktree(path):
         try:
             subprocess.run(
                 ["git", "-C", str(path), "rebase", "--abort"],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=constants.GIT_CMD_TIMEOUT)
         except (OSError, subprocess.SubprocessError):
             pass
         try:
             count = subprocess.run(
                 ["git", "-C", str(path), "rev-list", "--count", "HEAD..origin/main"],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=constants.GIT_CMD_TIMEOUT)
             if count.returncode == 0 and count.stdout.strip():
                 behind = count.stdout.strip()
         except (OSError, subprocess.SubprocessError):

@@ -131,6 +131,23 @@ def render_table(data):
                      for row in rows)
 
 
+def render_activity(data):
+    rows = []
+    for name in personas.PERSONAS:
+        row = data[name]
+        status = row["status"]
+        if status == prompts.BOARD_RUNNING and row["topic"]:
+            status = prompts.BOARD_RUNNING_TOPIC.format(topic=row["topic"])
+        rows.append(prompts.BOARD_ACTIVITY_ROW.format(
+            persona=digest.safe_text(name).replace("|", "\\|"),
+            provider=digest.safe_text(row["provider"]).replace("|", "\\|"),
+            status=digest.safe_text(status).replace("|", "\\|"),
+            cost=prompts.BOARD_COST.format(usd=row["cost_today"]),
+            kicks=row["kicks_today"],
+        ))
+    return prompts.BOARD_ACTIVITY.format(rows="\n".join(rows))
+
+
 def _message(as_name, message_id):
     payload = api.request(
         api.load(as_name), "GET", "/api/v1/messages/%d" % int(message_id),
@@ -217,14 +234,20 @@ def _digest_stamp(ts):
     return datetime.datetime.fromtimestamp(ts).strftime("%H:%M") if ts else prompts.BOARD_UNKNOWN
 
 
-def _render_topic(topic, topic_lanes, cached):
-    lines = [prompts.BOARD_TOPIC_HEADING.format(
+def _show_digest_items(topic, now_ts):
+    timestamp = topic.get("timestamp")
+    cutoff = now_ts - constants.BOARD_IDLE_HOURS * 60 * 60
+    return timestamp is None or float(timestamp) >= cutoff
+
+
+def _render_topic(topic, topic_lanes, cached, show_items):
+    lines = [prompts.BOARD_TOPIC_ROW.format(
         topic=digest.safe_text(topic["name"]), permalink=topic["permalink"])]
     if cached:
         lines.append(prompts.BOARD_DIGEST_LINE.format(
             summary=digest.safe_text(cached.get("summary") or prompts.BOARD_UNKNOWN),
             stamp=_digest_stamp(cached.get("ts"))))
-        for item in cached.get("items", []):
+        for item in cached.get("items", []) if show_items else []:
             lines.append(prompts.BOARD_ITEM.format(
                 mark="x" if item.get("done") else " ", text=digest.safe_text(item.get("text") or ""),
                 permalink=item.get("permalink") or topic["permalink"]))
@@ -243,7 +266,8 @@ def _render_topic(topic, topic_lanes, cached):
 
 
 def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
-                 as_name=constants.OPERATOR_IDENTITY):
+                 as_name=constants.OPERATOR_IDENTITY, now_ts=None):
+    now_ts = time.time() if now_ts is None else now_ts
     lanes = lane_rows() if lanes is None else lanes
     persona_rows = snapshot() if persona_rows is None else persona_rows
     if todos is None:
@@ -254,22 +278,24 @@ def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
         key = (lane.get("stream_id"), store.normalize_topic(lane.get("topic")))
         lane_map.setdefault(key, []).append(lane)
     topic_map = {(row.get("channel"), store.normalize_topic(row.get("name"))): row for row in todos}
-    sections = []
+    sections = [render_activity(persona_rows)]
     for group, channels in constants.BOARD_GROUPS:
         group_lines = []
         for channel in channels:
             channel_topics = [row for (name, _), row in topic_map.items() if name == channel]
             if not channel_topics:
                 continue
-            group_lines.append(prompts.BOARD_CHANNEL_HEADING.format(channel=channel))
+            group_lines.append(prompts.BOARD_CHANNEL_ROW.format(
+                channel=digest.safe_text(channel)))
             for topic in channel_topics:
                 key = (topic.get("stream_id"), store.normalize_topic(topic.get("name")))
                 cached = digests.get(digest.digest_key(*key), {}) if key[0] is not None else {}
-                group_lines.append(_render_topic(topic, lane_map.get(key, []), cached))
+                group_lines.append(_render_topic(
+                    topic, lane_map.get(key, []), cached,
+                    _show_digest_items(topic, now_ts)))
         if group_lines:
             sections.append(prompts.BOARD_GROUP_HEADING.format(group=group) + "\n" +
-                            "\n\n".join(group_lines))
-    sections.append(prompts.BOARD_COST_TAIL.format(personas=render_table(persona_rows)))
+                            "\n".join(group_lines))
     return "\n\n".join(sections)
 
 
@@ -318,6 +344,13 @@ def _selftest():
     else:
         failed += 1
         print("FAIL rendered table is empty or incomplete")
+    activity = render_activity(got)
+    if activity.startswith("## Activity today\n\n| Persona |") \
+            and len(activity.splitlines()) == len(personas.PERSONAS) + 4:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL activity Markdown table is empty or incomplete")
     lanes = lane_rows(**cases.MONITOR_LANE_INPUT)
     if lanes == cases.MONITOR_LANE_EXPECTED:
         passed += 1
@@ -337,6 +370,14 @@ def _selftest():
         else:
             failed += 1
             print("FAIL format_age(%r) -> %r wanted %r" % (seconds, got_age, expected))
+    for now_ts, timestamp, expected in cases.BOARD_ITEM_VISIBILITY:
+        got_visibility = _show_digest_items({"timestamp": timestamp}, now_ts)
+        if got_visibility == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _show_digest_items(%r, %r) -> %r wanted %r" %
+                  (now_ts, timestamp, got_visibility, expected))
     merged = merge_todos(*cases.BOARD_TODO_INPUT)
     if merged == cases.BOARD_TODO_EXPECTED:
         passed += 1
@@ -345,7 +386,7 @@ def _selftest():
         print("FAIL merge_todos(...) -> %r wanted %r" % (merged, cases.BOARD_TODO_EXPECTED))
     board = render_board(
         cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
-        cases.BOARD_RENDER_DIGESTS)
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000)
     if all(part in board for part in cases.BOARD_RENDER_CONTAINS) and \
             all(part not in board for part in cases.BOARD_RENDER_FORBIDDEN):
         passed += 1

@@ -12,6 +12,9 @@ def run(module):
 
 
 def _body():
+    import contextlib
+    import io
+
     import api
     import tests.cases as cases
 
@@ -38,13 +41,30 @@ def _body():
         else:
             failed += 1
             print("FAIL classify_attach(%r, %d) -> %r, wanted %r" % (path, index, got, expected))
-    for size, limit, should_refuse in cases.WINDOW:
-        refused = size > limit
-        if refused == should_refuse:
-            passed += 1
-        else:
-            failed += 1
-            print("FAIL window boundary size=%d limit=%d refused=%s" % (size, limit, refused))
+    old_window = api.window
+    try:
+        for size, limit, should_refuse in cases.WINDOW:
+            api.window = lambda as_name, value=limit: value
+            stderr = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(stderr):
+                    guarded = _strip_and_guard("x" * size, "bridge")
+                code = None
+            except SystemExit as exc:
+                guarded, code = None, exc.code
+            refused = code == 3
+            note = stderr.getvalue()
+            ok = refused == should_refuse
+            ok = ok and (refused or guarded == "x" * size)
+            ok = ok and (not refused or str(size) in note and str(limit) in note)
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL window guard size=%d limit=%d code=%r body=%r note=%r" %
+                      (size, limit, code, guarded, note))
+    finally:
+        api.window = old_window
     for body, expect_body, expect_accepted in cases.EXTRACTS:
         got_body, got_accepted = _extract(body, [])
         if got_body == expect_body and got_accepted == expect_accepted:

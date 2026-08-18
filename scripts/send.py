@@ -125,6 +125,17 @@ def with_footer(body, footer):
     return (body or "").rstrip("\n") + ("\n" + closer if closer else "") + footer
 
 
+def _strip_and_guard(text, as_name):
+    text = strip_persona_mentions(text or "", as_name)
+    text = strip_wildcards(text)
+    limit = api.window(as_name)
+    if len(text) > limit:
+        # An over-window body is refused, never truncated; the caller attaches a file instead.
+        sys.stderr.write(prompts.OVER_WINDOW_NOTE.format(size=len(text), window=limit) + "\n")
+        raise SystemExit(3)
+    return text
+
+
 def post(as_name, stream, topic, body, files=(), footer=""):
     cfg = _ready(as_name)
     body, accepted = _extract(body or "", files)
@@ -134,13 +145,7 @@ def post(as_name, stream, topic, body, files=(), footer=""):
     if links:
         body = body.rstrip("\n") + "\n\n" + "\n".join(links)
     body = with_footer(body, footer)
-    body = strip_persona_mentions(body, as_name)
-    body = strip_wildcards(body)
-    limit = api.window(as_name)
-    if len(body) > limit:
-        # An over-window body is refused, never truncated; the caller attaches a file instead.
-        sys.stderr.write(prompts.OVER_WINDOW_NOTE.format(size=len(body), window=limit) + "\n")
-        raise SystemExit(3)
+    body = _strip_and_guard(body, as_name)
     sid = api.stream_id(as_name, stream)
     if sid is None:
         api.refuse_narrow_miss(as_name, stream)
@@ -158,12 +163,7 @@ def post(as_name, stream, topic, body, files=(), footer=""):
 
 def update(as_name, message_id, content):
     cfg = _ready(as_name)
-    content = strip_persona_mentions(content or "", as_name)
-    content = strip_wildcards(content)
-    limit = api.window(as_name)
-    if len(content) > limit:
-        sys.stderr.write(prompts.OVER_WINDOW_NOTE.format(size=len(content), window=limit) + "\n")
-        raise SystemExit(3)
+    content = _strip_and_guard(content, as_name)
     api.check(
         api.request(
             cfg,

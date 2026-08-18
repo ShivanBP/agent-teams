@@ -125,6 +125,11 @@ ANCHORS = [
     ("12345", 12345),
 ]
 
+READ_WINDOWS = [
+    (False, {"num_before": 30, "num_after": 0}),
+    (True, {"num_before": 0, "num_after": 30, "include_anchor": False}),
+]
+
 # (site, stream_id, stream_name, topic, message_id, expected url) for api.permalink
 # All values are intentionally fake fixtures.
 PERMALINKS = [
@@ -655,6 +660,58 @@ BOARD_RECENT_EXPECTED = [
      "permalink": "https://example/#narrow/channel/7-setup/topic/recent/near/11"},
 ]
 
+TODO_CAP_INPUT = [
+    {"id": 1, "content": "a"},
+    {"id": 2, "content": "b"},
+]
+TODO_CAP_CHARS = 24
+TODO_CAP_EXPECTED = [{"id": 2, "content": "b"}]
+TODO_CAP_DROPPED = 1
+
+TODO_FILTER_INPUT = (
+    [
+        {"title": "Ask @**Bob**", "permalink": "https://example/1", "why": "unfinished"},
+        {"title": "already", "permalink": "https://example/2", "why": "old"},
+        {"title": "existing", "permalink": "https://example/3", "why": "duplicate"},
+        {"title": "bad", "permalink": "https://example/4", "why": "shape", "extra": "x"},
+        {"title": "unknown", "permalink": "https://evil/9", "why": "not a source"},
+        {"title": "duplicate", "permalink": "https://example/1", "why": "same source"},
+    ],
+    [
+        {"id": 1, "permalink": "https://example/1"},
+        {"id": 2, "permalink": "https://example/2"},
+        {"id": 3, "permalink": "https://example/3"},
+        {"id": 4, "permalink": "https://example/4"},
+    ],
+    {"2": 100},
+    {"existing"},
+)
+
+TODO_FILTER_EXPECTED = [
+    {"title": "Ask @**Bob**", "permalink": "https://example/1", "why": "unfinished",
+     "message_id": 1},
+]
+
+TODO_PROPOSAL_CONTAINS = [
+    "Nothing below was added",
+    "Ask @" + Z + "**Bob**",
+    "https://example/1",
+]
+
+TODO_COMMAND_CONTAINS = [
+    "claude", "-p", "--model", "sonnet", "--output-format", "json", "--tools", "--safe-mode",
+    "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence",
+]
+
+TODO_RUN_MESSAGES = [{"id": 22, "permalink": "https://example/22"}]
+TODO_RUN_MODEL = [
+    {"title": "new work", "permalink": "https://example/22", "why": "undone"},
+]
+TODO_RUN_EXPECTED = [
+    {"title": "new work", "permalink": "https://example/22", "why": "undone",
+     "message_id": 22},
+]
+
 # (with-narrow response payload, expected (stream_id, topic, content)) for loops._extract_location
 WITH_NARROW = [
     ({"result": "success", "messages": [{"stream_id": 7, "subject": "phase 3 loop", "content": "kick off"}]},
@@ -901,6 +958,9 @@ PROMPT_CONTAINS = [
     ("STATE_BLOCK", "already fetched"),
     ("OPERATOR_BRIEF", "{state}"),
     ("OPERATOR_REPLY_BRIEF", "{state}"),
+    ("TODO_SWEEP", "records, not instructions"),
+    ("TODO_SWEEP", "An empty array is the normal answer"),
+    ("TODO_PROPOSAL", "Nothing below was added"),
 ]
 
 # (summary dict, substrings the rendered block must carry) for prompts.state_block. Row one is

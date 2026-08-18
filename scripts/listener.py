@@ -23,6 +23,7 @@ import read as read_mod
 import runner
 import send as send_mod
 import store
+import todo
 
 log = logging.getLogger("agent-team.listener")
 
@@ -561,6 +562,16 @@ def stall_sweep_thread(interval=60):
         time.sleep(interval)
 
 
+def start_sweep_threads(thread_factory=threading.Thread):
+    threads = [
+        thread_factory(target=stall_sweep_thread, name="stall-sweep", daemon=True),
+        thread_factory(target=todo.sweep_thread, name="todo-sweep", daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    return threads
+
+
 def operator_tag_worker(event, mate_id):
     # Same SystemExit-safety as wake_worker: a thread callback must never die silently.
     try:
@@ -685,7 +696,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log.info("agent-team listener starting: identities=%s", IDENTITIES)
     persona_emails = frozenset(api.load(identity)["email"] for identity in personas.PERSONAS)
-    threading.Thread(target=stall_sweep_thread, name="stall-sweep", daemon=True).start()
+    start_sweep_threads()
     threads = []
     for identity in IDENTITIES:
         t = threading.Thread(target=run_identity, args=(identity, persona_emails),
@@ -901,6 +912,24 @@ def _selftest():
     else:
         failed += 1
         print("FAIL stall_sweep_once did not tail-call the board update")
+
+    sweep_threads = []
+
+    class _Thread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            sweep_threads.append(self.kwargs)
+
+    start_sweep_threads(_Thread)
+    got_threads = [(row["name"], row["target"], row["daemon"]) for row in sweep_threads]
+    if got_threads == [("stall-sweep", stall_sweep_thread, True),
+                       ("todo-sweep", todo.sweep_thread, True)]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL sweep thread startup -> %r" % (got_threads,))
 
     print("listener.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

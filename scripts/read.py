@@ -9,7 +9,15 @@ import constants
 import prompts
 
 
-def fetch(as_name, channel, topic=None, search=None, limit=constants.READ_LIMIT, anchor="newest"):
+def _window(limit, newer):
+    params = {"num_before": 0 if newer else limit, "num_after": limit if newer else 0}
+    if newer:
+        params["include_anchor"] = False
+    return params
+
+
+def fetch(as_name, channel, topic=None, search=None, limit=constants.READ_LIMIT, anchor="newest",
+          newer=False):
     """Self-guarding: enforces identity itself, matching send.py's post/react."""
     api.enforce_identity(as_name)
     cfg = api.load(as_name)
@@ -21,17 +29,16 @@ def fetch(as_name, channel, topic=None, search=None, limit=constants.READ_LIMIT,
         narrow.append({"operator": "topic", "operand": topic})
     if search:
         narrow.append({"operator": "search", "operand": search})
+    params = dict({
+        "anchor": anchor,
+        "narrow": narrow,
+        "apply_markdown": False,
+    }, **_window(limit, newer))
     payload = api.request(
         cfg,
         "GET",
         "/api/v1/messages",
-        {
-            "anchor": anchor,
-            "num_before": limit,
-            "num_after": 0,
-            "narrow": narrow,
-            "apply_markdown": False,
-        },
+        params,
     )
     if payload.get("result") != "success":
         return None, payload.get("msg", payload)
@@ -76,6 +83,13 @@ def _selftest():
         else:
             failed += 1
             print("FAIL anchor(%r) -> %r, wanted %r" % (anchor, got, expected))
+    for newer, expected in cases.READ_WINDOWS:
+        params = _window(30, newer)
+        if params == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL read window newer=%r -> %r wanted %r" % (newer, params, expected))
     print("read.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0
 

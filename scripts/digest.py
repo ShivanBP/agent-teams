@@ -222,7 +222,7 @@ def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_f
     cached = load_fn("digests")
     parked = load_fn(constants.PARKED_STATE)
     refreshed = []
-    board_channels = {channel for _, channels in constants.BOARD_GROUPS for channel in channels}
+    board_channels = constants.board_channels()
     for channel in streams_fn(as_name):
         if channel not in board_channels:
             continue

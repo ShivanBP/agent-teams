@@ -183,6 +183,12 @@ BOARD_GROUPS = (
     ("Workshop", ("setup", "maintenance", "scheduled-jobs", "status")),
     ("Domains", ("foundry", "job-search", "money", "outer-realms", "peter's")),
 )
+
+
+def board_channels():
+    return {channel for _, channels in BOARD_GROUPS for channel in channels}
+
+
 BOARD_STATE_KEYS = {
     "activity": "board",
     "workshop": "board-workshop",

@@ -1376,3 +1376,8 @@ MATE_EMAIL_SETS = [
      frozenset({"mate@example.com", "john@example.com"})),
     (None, "", frozenset()),
 ]
+
+BOARD_CHANNELS = {
+    "setup", "maintenance", "scheduled-jobs", "status",
+    "foundry", "job-search", "money", "outer-realms", "peter's",
+}

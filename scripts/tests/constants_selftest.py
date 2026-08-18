@@ -109,6 +109,14 @@ def _body():
             print("FAIL _mate_emails(%r, %r) -> %r wanted %r" %
                   (plural, singular, got, expected))
 
+    channels = board_channels()
+    if channels == cases.BOARD_CHANNELS:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL board_channels() -> %r wanted %r" %
+              (channels, cases.BOARD_CHANNELS))
+
     # prose-agreement pins: constants own the numbers, prompts.py owns the hand-written words
     # describing them; this catches the two drifting apart (Jan's 2026-08-12 finding).
     files_word = _WORDS.get(ATTACH_MAX_FILES, str(ATTACH_MAX_FILES))

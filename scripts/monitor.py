@@ -268,7 +268,7 @@ def _topic_todos(as_name, now_ts=None):
     cutoff = now_ts - constants.BOARD_TOPIC_DAYS * 24 * 60 * 60
     cfg = api.load(as_name)
     rows = []
-    board_channels = {channel for _, channels in constants.BOARD_GROUPS for channel in channels}
+    board_channels = constants.board_channels()
     for channel in api.visible_streams(as_name):
         if channel not in board_channels:
             continue

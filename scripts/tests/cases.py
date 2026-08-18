@@ -733,6 +733,7 @@ BOARD_RENDER_DIGESTS = {
 BOARD_RENDER_CONTAINS = [
     "## Activity today\n\n| Persona | Provider | Status | Cost | Kicks |",
     "## Workshop",
+    "## Domains",
     "- **setup**",
     "  - [Build board](https://example/1)",
     "    - Build is ready @" + Z + "\\*\\*all\\*\\* _(as of ",
@@ -863,10 +864,10 @@ DIGEST_BOUND_MODEL = {
 }
 DIGEST_BOUND_INPUT = (DIGEST_BOUND_MODEL, DIGEST_BOUND_MESSAGES, {})
 DIGEST_BOUND_EXPECTED = {
-    "summary": "s" * 120,
+    "summary": "s" * 117 + "...",
     "items": [
         dict(DIGEST_BOUND_MODEL["items"][number - 1],
-             text=DIGEST_BOUND_MODEL["items"][number - 1]["text"][:100])
+             text=DIGEST_BOUND_MODEL["items"][number - 1]["text"][:97] + "...")
         for number in (1, 2, 3, 4, 5, 9, 10)
     ],
 }
@@ -1165,6 +1166,7 @@ PROMPT_CONTAINS = [
     ("BOARD_TOPIC_ROW", "{permalink}"),
     ("BOARD_LANE", "{action}"),
     ("BOARD_ACTIVITY", "{rows}"),
+    ("DIGEST_CLIP_SUFFIX", "..."),
 ]
 
 # (summary dict, substrings the rendered block must carry) for prompts.state_block. Row one is

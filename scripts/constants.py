@@ -183,6 +183,11 @@ BOARD_GROUPS = (
     ("Workshop", ("setup", "maintenance", "scheduled-jobs", "status")),
     ("Domains", ("foundry", "job-search", "money", "outer-realms", "peter's")),
 )
+BOARD_STATE_KEYS = {
+    "activity": "board",
+    "workshop": "board-workshop",
+    "domains": "board-domains",
+}
 
 RESOLVED_PREFIX = "✔"  # Zulip's own resolve marker on a topic name; startswith semantics only.
 

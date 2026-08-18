@@ -52,6 +52,16 @@ def model_call(previous, messages, run_model_fn=todo.run_model):
     return run_model_fn(prompt, lane="digest")
 
 
+def _clip(text, limit):
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    head = text[:limit - len(prompts.DIGEST_CLIP_SUFFIX)].rstrip()
+    if " " in head:
+        head = head.rsplit(" ", 1)[0]
+    return head + prompts.DIGEST_CLIP_SUFFIX
+
+
 def validate_digest(payload, messages, previous):
     if not isinstance(payload, dict) or set(payload) != {"summary", "items"}:
         return None
@@ -72,16 +82,29 @@ def validate_digest(payload, messages, previous):
                 or row["permalink"] in seen:
             continue
         seen.add(row["permalink"])
-        candidates.append(dict(row, text=row["text"].strip()[:constants.DIGEST_ITEM_MAX]))
+        candidates.append(dict(row, text=_clip(row["text"], constants.DIGEST_ITEM_MAX)))
     open_items = [row for row in candidates if not row["done"]][:constants.DIGEST_OPEN_MAX]
     done_rows = [row for row in candidates if row["done"]]
     done_items = done_rows[-constants.DIGEST_DONE_MAX:] if constants.DIGEST_DONE_MAX else []
     kept = {id(row) for row in open_items + done_items}
     items = [row for row in candidates if id(row) in kept]
     return {
-        "summary": payload["summary"].strip()[:constants.DIGEST_SUMMARY_MAX],
+        "summary": _clip(payload["summary"], constants.DIGEST_SUMMARY_MAX),
         "items": items,
     }
+
+
+def bound_cached(current):
+    if not current:
+        return {}
+    payload = {name: current.get(name) for name in ("summary", "items")}
+    bounded = validate_digest(payload, [], current)
+    if bounded is None:
+        return {}
+    for name in ("anchor_id", "ts"):
+        if name in current:
+            bounded[name] = current[name]
+    return bounded
 
 
 def safe_text(text):
@@ -174,6 +197,13 @@ def _selftest():
         failed += 1
         print("FAIL validate_digest bounds -> %r wanted %r" %
               (bounded, cases.DIGEST_BOUND_EXPECTED))
+    cached = bound_cached(dict(cases.DIGEST_BOUND_MODEL, anchor_id=22, ts=1234))
+    expected_cached = dict(cases.DIGEST_BOUND_EXPECTED, anchor_id=22, ts=1234)
+    if cached == expected_cached:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL bound_cached -> %r wanted %r" % (cached, expected_cached))
     if all(validate_digest(*row) is None for row in cases.DIGEST_BAD_ROOTS):
         passed += 1
     else:

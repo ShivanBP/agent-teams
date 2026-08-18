@@ -267,6 +267,12 @@ def _render_topic(topic, topic_lanes, cached, show_items):
 
 def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
                  as_name=constants.OPERATOR_IDENTITY, now_ts=None):
+    return "\n\n".join(content for _, content in _board_sections(
+        lanes, persona_rows, todos, digests, as_name, now_ts))
+
+
+def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
+                    as_name=constants.OPERATOR_IDENTITY, now_ts=None):
     now_ts = time.time() if now_ts is None else now_ts
     lanes = lane_rows() if lanes is None else lanes
     persona_rows = snapshot() if persona_rows is None else persona_rows
@@ -278,7 +284,7 @@ def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
         key = (lane.get("stream_id"), store.normalize_topic(lane.get("topic")))
         lane_map.setdefault(key, []).append(lane)
     topic_map = {(row.get("channel"), store.normalize_topic(row.get("name"))): row for row in todos}
-    sections = [render_activity(persona_rows)]
+    sections = [("activity", render_activity(persona_rows))]
     for group, channels in constants.BOARD_GROUPS:
         group_lines = []
         for channel in channels:
@@ -289,14 +295,25 @@ def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
                 channel=digest.safe_text(channel)))
             for topic in channel_topics:
                 key = (topic.get("stream_id"), store.normalize_topic(topic.get("name")))
-                cached = digests.get(digest.digest_key(*key), {}) if key[0] is not None else {}
+                cached = digest.bound_cached(digests.get(digest.digest_key(*key), {})) \
+                    if key[0] is not None else {}
                 group_lines.append(_render_topic(
                     topic, lane_map.get(key, []), cached,
                     _show_digest_items(topic, now_ts)))
+        body = prompts.BOARD_GROUP_HEADING.format(group=group)
         if group_lines:
-            sections.append(prompts.BOARD_GROUP_HEADING.format(group=group) + "\n" +
-                            "\n".join(group_lines))
-    return "\n\n".join(sections)
+            body += "\n" + "\n".join(group_lines)
+        sections.append((group.casefold(), body))
+    return sections
+
+
+def board_parts(limit, lanes=None, persona_rows=None, todos=None, digests=None,
+                as_name=constants.OPERATOR_IDENTITY, now_ts=None, force_split=False):
+    sections = _board_sections(lanes, persona_rows, todos, digests, as_name, now_ts)
+    combined = "\n\n".join(content for _, content in sections)
+    if not force_split and len(combined) <= limit:
+        return {"activity": combined}
+    return dict(sections)
 
 
 def _current_content(as_name, message_id):
@@ -304,19 +321,28 @@ def _current_content(as_name, message_id):
     return message.get("content") if message else None
 
 
-def update_board(as_name=constants.OPERATOR_IDENTITY, content=None):
-    content = render_board(as_name=as_name) if content is None else content
-    state = store.load("board")
-    message_id = state.get("message_id")
-    if message_id is None:
-        message_id = send_mod.post(
-            as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, content)
-        store.mutate("board", lambda data: {"message_id": message_id})
-        return message_id, True
-    if _current_content(as_name, message_id) == content:
-        return message_id, False
-    send_mod.update(as_name, message_id, content)
-    return message_id, True
+def update_board(as_name=constants.OPERATOR_IDENTITY, content=None, contents=None):
+    split_live = any(store.load(constants.BOARD_STATE_KEYS[name]).get("message_id")
+                     for name in ("workshop", "domains"))
+    if contents is None:
+        contents = {"activity": content} if content is not None else board_parts(
+            api.window(as_name), as_name=as_name, force_split=split_live)
+    results = {}
+    for name, body in contents.items():
+        state_name = constants.BOARD_STATE_KEYS[name]
+        message_id = store.load(state_name).get("message_id")
+        if message_id is None:
+            message_id = send_mod.post(
+                as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body)
+            store.mutate(state_name, lambda data, value=message_id: {"message_id": value})
+            results[name] = (message_id, True)
+            continue
+        if _current_content(as_name, message_id) == body:
+            results[name] = (message_id, False)
+            continue
+        send_mod.update(as_name, message_id, body)
+        results[name] = (message_id, True)
+    return results
 
 
 def _selftest():
@@ -393,6 +419,19 @@ def _selftest():
     else:
         failed += 1
         print("FAIL render_board(...) missing a required section or link")
+    combined_parts = board_parts(
+        10000, cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000)
+    split_parts = board_parts(
+        1, cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000)
+    if combined_parts == {"activity": board} \
+            and list(split_parts) == ["activity", "workshop", "domains"]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL board_parts combined=%r split=%r" %
+              (list(combined_parts), list(split_parts)))
 
     saved_topics = (api.visible_streams, api.stream_id, api.topics, api.load, _message)
     topic_calls = []
@@ -420,28 +459,43 @@ def _selftest():
         failed += 1
         print("FAIL recent topic sweep -> %r calls=%r" % (recent, topic_calls))
 
-    state, posts, updates = {}, [], []
+    states, current, posts, updates = {}, {}, [], []
     saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
     try:
-        store.load = lambda name: dict(state)
-        store.mutate = lambda name, fn: state.update(fn(dict(state)))
-        send_mod.post = lambda *args: posts.append(args) or 99
+        store.load = lambda name: dict(states.get(name, {}))
+
+        def mutate_state(name, fn):
+            states[name] = fn(dict(states.get(name, {})))
+
+        store.mutate = mutate_state
+        send_mod.post = lambda *args: posts.append(args) or (98 + len(posts))
         send_mod.update = lambda *args: updates.append(args) or args[1]
-        globals()["_current_content"] = lambda as_name, message_id: state.get("content")
+        globals()["_current_content"] = lambda as_name, message_id: current.get(message_id)
         first = update_board(content="one")
-        state["content"] = "one"
+        current[99] = "one"
         unchanged = update_board(content="one")
         changed = update_board(content="two")
+        current[99] = "two"
+        split = update_board(contents={
+            "activity": "activity", "workshop": "workshop", "domains": "domains"})
     finally:
         store.load, store.mutate, send_mod.post, send_mod.update = saved[:4]
         globals()["_current_content"] = saved[4]
-    if first == (99, True) and unchanged == (99, False) and changed == (99, True) \
-            and len(posts) == 1 and updates == [(constants.OPERATOR_IDENTITY, 99, "two")]:
+    if first == {"activity": (99, True)} and unchanged == {"activity": (99, False)} \
+            and changed == {"activity": (99, True)} \
+            and split == {"activity": (99, True), "workshop": (100, True),
+                          "domains": (101, True)} \
+            and states == {"board": {"message_id": 99},
+                           "board-workshop": {"message_id": 100},
+                           "board-domains": {"message_id": 101}} \
+            and len(posts) == 3 \
+            and updates == [(constants.OPERATOR_IDENTITY, 99, "two"),
+                            (constants.OPERATOR_IDENTITY, 99, "activity")]:
         passed += 1
     else:
         failed += 1
-        print("FAIL update_board post/edit/skip sequence: %r %r %r posts=%r updates=%r" %
-              (first, unchanged, changed, posts, updates))
+        print("FAIL update_board sequence: %r %r %r split=%r states=%r posts=%r updates=%r" %
+              (first, unchanged, changed, split, states, posts, updates))
 
     print("monitor.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

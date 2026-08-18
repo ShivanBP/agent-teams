@@ -12,12 +12,21 @@ def run(module):
 
 
 def _body():
+    import json
     import tempfile
     from pathlib import Path
 
+    import constants
     from tests import cases
 
     passed = failed = 0
+    roster = load_personas(json.loads(constants.MATRIX_EXAMPLE_PATH.read_text()))
+    if roster == cases.PERSONA_EXAMPLE_ROSTER:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL load_personas(example) -> %r wanted %r"
+              % (roster, cases.PERSONA_EXAMPLE_ROSTER))
     for label, rows, expected_names, expected_errors in cases.PERSONA_FIXTURES:
         with tempfile.TemporaryDirectory() as root:
             directory = Path(root)

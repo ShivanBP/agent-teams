@@ -57,12 +57,6 @@ FLAG_WORDS = ("-opus", "-fable", "-sonnet", "-low", "-mid", "-high", "-xtra",
 FLAG_TO_MODEL = {"-opus": "opus", "-fable": "fable", "-sonnet": "sonnet"}
 FLAG_TO_EFFORT = {"-low": "low", "-mid": "mid", "-high": "high", "-xtra": "xtra"}
 FLAG_TO_PROVIDER = {"-claude": "claude", "-codex": "codex", "-agy": "agy", "-opencode": "opencode"}
-PROVIDER_PERSONAS = {
-    "claude": set(personas.PERSONAS),
-    "codex": set(personas.PERSONAS),
-    "agy": set(personas.PERSONAS),
-    "opencode": set(personas.PERSONAS),
-}
 
 
 def parse_flags(content):
@@ -87,11 +81,13 @@ def flags_to_overrides(flags):
 
 
 def provider_for_wake(identity, flags, row, matrix=None):
-    """Last explicit provider, sticky lane, persona default, then Claude."""
+    """Last explicit provider, sticky lane, persona default, then Claude. Every persona supports
+    every provider, so a provider flag applies to any identity on the roster."""
+    roster = matrix if matrix is not None else personas.PERSONAS
     explicit = None
     for flag in flags:
         candidate = FLAG_TO_PROVIDER.get(flag)
-        if candidate and identity in PROVIDER_PERSONAS[candidate]:
+        if candidate and identity in roster:
             explicit = candidate
     if explicit:
         return explicit

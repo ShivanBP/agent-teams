@@ -32,7 +32,7 @@ def snapshot(inflight=None, cost_rows=None, kick_rows=None, matrix=None):
     kick_rows = _ledger_rows("kicks") if kick_rows is None else kick_rows
     defaults = matrix or {name: constants.matrix_defaults(name) for name in personas.PERSONAS}
     data = {}
-    for name in personas.PERSONAS:
+    for name in defaults:
         data[name] = {
             "provider": defaults[name]["provider"],
             "status": prompts.BOARD_IDLE_STATUS,
@@ -129,8 +129,7 @@ def _running_status(row):
 
 def render_table(data):
     rows = [prompts.BOARD_PERSONA_HEADERS]
-    for name in personas.PERSONAS:
-        row = data[name]
+    for name, row in data.items():
         status = _running_status(row)
         rows.append((name, row["provider"], status,
                      prompts.BOARD_COST.format(usd=row["cost_today"]), str(row["kicks_today"])))
@@ -141,8 +140,7 @@ def render_table(data):
 
 def render_activity(data):
     rows = []
-    for name in personas.PERSONAS:
-        row = data[name]
+    for name, row in data.items():
         status = _running_status(row)
         rows.append(prompts.BOARD_ACTIVITY_ROW.format(
             persona=digest.safe_text(name).replace("|", "\\|"),

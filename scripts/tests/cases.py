@@ -28,14 +28,15 @@ WILDCARDS = [
     ("", ""),
 ]
 
-# (sender, input, expected) for send.strip_persona_mentions
+# (sender, input, expected) for send.strip_persona_mentions. The roster comes from the matrix, so
+# the rows name bob, the one persona both the live and the example matrix carry.
 PERSONA_MENTIONS = [
-    ("thoth", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
-    ("thoth", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
-    ("thoth", "ask @**Ma'at** to review", "ask @" + Z + "**Ma'at** to review"),
-    ("bridge", "kick @**thoth** build", "kick @**thoth** build"),
-    ("thoth", "alert @**Soto**", "alert @**Soto**"),
-    ("thoth", "@**all** hands", "@**all** hands"),
+    ("bob", "ask @**bob** to check", "ask @" + Z + "**bob** to check"),
+    ("bob", "@**Bob|123** here", "@" + Z + "**Bob|123** here"),
+    ("bob", "ask @**Ma'at** to review", "ask @" + Z + "**Ma'at** to review"),
+    ("bridge", "kick @**bob** build", "kick @**bob** build"),
+    ("bob", "alert @**Soto**", "alert @**Soto**"),
+    ("bob", "@**all** hands", "@**all** hands"),
 ]
 
 # (params, expected form encoding) for api._encode
@@ -431,6 +432,10 @@ PERSONA_FIXTURES = [
     set(), 1),
 ]
 
+# personas.load_personas keeps matrix key order. The example matrix is the fallback roster and the
+# only one a clone has, so the selftest reads it by path and never the gitignored live matrix.
+PERSONA_EXAMPLE_ROSTER = ("thoth", "bob", "maat")
+
 PERSONA_DISPLAY_NAMES = [
     ("thoth", "Thoth"),
     ("bob", "Bob"),
@@ -516,9 +521,10 @@ STATE_SUMMARIES = [
 ]
 
 # (lane, stored session args, error the run raises, expected session_get afterwards) for the
-# wake-failure path. One row: the drop is independent of provider, persona and error type.
+# wake-failure path. One row: the drop is independent of provider, persona and error type. The
+# lane names bob, who is on both the live and the example roster; handle_wake ignores the rest.
 WAKE_SESSION_CLEARED_ON_FAILURE = [
-    ("selftest:wake failure:maat",
+    ("selftest:wake failure:bob",
      ("sid-dead", 42, "claude"), RuntimeError("boom"), None),
 ]
 

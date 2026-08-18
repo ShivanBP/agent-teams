@@ -75,6 +75,11 @@ def translate_effort(provider, level):
         raise RuntimeError("unsupported effort level %r for provider %r" % (level, provider))
 
 
+def persona_matrix():
+    """The matrix as loaded, in file order; personas.py takes the fleet roster from its keys."""
+    return dict(_MATRIX)
+
+
 def matrix_defaults(persona):
     try:
         return dict(_MATRIX[persona])

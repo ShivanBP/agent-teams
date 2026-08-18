@@ -1,10 +1,19 @@
-"""Static persona name table with an offline fixture selftest."""
+"""Persona name table, read from the persona matrix, with an offline fixture selftest."""
 
 import argparse
 import re
 import sys
 
-PERSONAS = ("thoth", "bob", "maat")
+import constants
+
+
+def load_personas(matrix=None):
+    """The fleet roster, in matrix order. The live matrix is the roster of record; constants
+    falls back to the example matrix when it is absent, so a clone still has a fleet."""
+    return tuple(matrix if matrix is not None else constants.persona_matrix())
+
+
+PERSONAS = load_personas()
 DISPLAY_NAMES = {"maat": "Ma'at"}
 MENTION_NAMES = tuple(dict.fromkeys(PERSONAS + tuple(DISPLAY_NAMES.values())))
 

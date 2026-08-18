@@ -14,7 +14,6 @@ def run(module):
 def _body():
     import api
     import constants
-    import personas
     import prompts
     import send as send_mod
     import store
@@ -37,14 +36,14 @@ def _body():
         failed += 1
         print("FAIL snapshot(...) -> %r wanted %r" % (got, cases.MONITOR_EXPECTED))
     table = render_table(got)
-    if table.startswith("Persona") and len(table.splitlines()) == len(personas.PERSONAS) + 1:
+    if table.startswith("Persona") and len(table.splitlines()) == len(got) + 1:
         passed += 1
     else:
         failed += 1
         print("FAIL rendered table is empty or incomplete")
     activity = render_activity(got)
     if activity.startswith("## Activity today\n\n| Persona |") \
-            and len(activity.splitlines()) == len(personas.PERSONAS) + 4:
+            and len(activity.splitlines()) == len(got) + 4:
         passed += 1
     else:
         failed += 1

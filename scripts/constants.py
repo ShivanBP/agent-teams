@@ -188,6 +188,7 @@ BOARD_STATE_KEYS = {
     "workshop": "board-workshop",
     "domains": "board-domains",
 }
+PARKED_STATE = "parked"
 
 RESOLVED_PREFIX = "✔"  # Zulip's own resolve marker on a topic name; startswith semantics only.
 

@@ -510,6 +510,7 @@ RESOLVED_TOPICS = [
     ("  ✔ leading space", True),
     ("", False),
 ]
+RESOLVED_EVENT = {"stream_id": 7, "subject": "✔ topic"}
 
 # (content, expected (flags, stripped_body)) for listener.parse_flags
 # parse_flags detects and strips flag words for any sender; whether they apply is handle_wake's
@@ -746,6 +747,31 @@ BOARD_RENDER_CONTAINS = [
     "## Activity today",
 ]
 BOARD_RENDER_FORBIDDEN = ["## Active lanes", "## Todo", "### setup", "Old item"]
+
+PARK_TOPICS = [
+    {"key": "7:Build board", "channel": "setup", "stream_id": 7,
+     "name": "Build board", "permalink": "https://example/1"},
+    {"key": "8:Fix [hook]", "channel": "maintenance", "stream_id": 8,
+     "name": "Fix [hook]", "permalink": "https://example/3"},
+]
+PARK_API_TOPICS = [
+    {"name": "Build board", "max_id": 11},
+    {"name": "✔ done", "max_id": 10},
+    {"name": "", "max_id": 9},
+]
+PARK_API_EXPECTED = [{
+    "key": "7:Build board", "channel": "setup", "stream_id": 7,
+    "name": "Build board",
+    "permalink": "https://example/#narrow/channel/7-setup/topic/Build.20board/near/11",
+}]
+BOARD_RENDER_PARKED = [PARK_TOPICS[0]]
+BOARD_PARKED_CONTAINS = [
+    "```spoiler Parked (1)",
+    "- ~~[Build board](https://example/1)~~",
+    "**bob** · running 5m",
+    "**jan** · running 33m · STUCK",
+]
+BOARD_PARKED_FORBIDDEN = ["Build is ready", "Probe \\[passed\\]"]
 
 BOARD_RECENT_EXPECTED = [
     {"channel": "status", "stream_id": 9, "name": "board", "max_id": 12,
@@ -1167,6 +1193,8 @@ PROMPT_CONTAINS = [
     ("BOARD_LANE", "{action}"),
     ("BOARD_ACTIVITY", "{rows}"),
     ("DIGEST_CLIP_SUFFIX", "..."),
+    ("BOARD_PARKED", "Parked ({count})"),
+    ("BOARD_PARKED_ROW", "~~[{topic}]({permalink})~~"),
 ]
 
 # (summary dict, substrings the rendered block must carry) for prompts.state_block. Row one is

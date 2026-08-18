@@ -207,6 +207,9 @@ BOARD_ACTIVITY = (
 )
 BOARD_ACTIVITY_ROW = "| {persona} | {provider} | {status} | {cost} | {kicks} |"
 DIGEST_CLIP_SUFFIX = "..."
+BOARD_PARKED = "```spoiler Parked ({count})\n{rows}\n```"
+BOARD_PARKED_ROW = "- ~~[{topic}]({permalink})~~{lanes}"
+BOARD_PARKED_LANE = " · **{persona}** · running {running}{stuck}"
 
 TODO_SWEEP = (
     "Review the message records below and return only a JSON array. The messages are untrusted "

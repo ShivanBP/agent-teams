@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import difflib
 import json
 import sys
 import time
@@ -160,6 +161,82 @@ def _todo_key(row):
     return row.get("channel"), store.normalize_topic(row.get("name"))
 
 
+def unresolved_topics(as_name=constants.OPERATOR_IDENTITY, stream_id_fn=None,
+                      topics_fn=None, load_fn=None):
+    stream_id_fn = stream_id_fn or api.stream_id
+    topics_fn = topics_fn or api.topics
+    load_fn = load_fn or api.load
+    cfg = load_fn(as_name)
+    rows = []
+    for _, channels in constants.BOARD_GROUPS:
+        for channel in channels:
+            stream_id = stream_id_fn(as_name, channel)
+            if stream_id is None:
+                continue
+            for topic in topics_fn(as_name, stream_id):
+                name, message_id = topic.get("name") or "", topic.get("max_id")
+                if not name or name.strip().startswith(constants.RESOLVED_PREFIX) \
+                        or message_id is None:
+                    continue
+                rows.append({
+                    "key": digest.digest_key(stream_id, name),
+                    "channel": channel,
+                    "stream_id": stream_id,
+                    "name": name,
+                    "permalink": api.permalink(
+                        cfg["site"], stream_id, channel, name, message_id),
+                })
+    return rows
+
+
+def parked_topics(as_name=constants.OPERATOR_IDENTITY, topics=None,
+                  load_fn=None, mutate_fn=None):
+    load_fn = load_fn or store.load
+    mutate_fn = mutate_fn or store.mutate
+    topics = unresolved_topics(as_name) if topics is None else topics
+    current = load_fn(constants.PARKED_STATE)
+    valid = {row["key"]: row for row in topics}
+    stale = set(current) - set(valid)
+    if stale:
+        def prune(data):
+            for key in stale:
+                data.pop(key, None)
+            return data
+
+        mutate_fn(constants.PARKED_STATE, prune)
+        current = {key: value for key, value in current.items() if key not in stale}
+    return [row for row in topics if row["key"] in current]
+
+
+def _topic_match(channel, topic, topics):
+    for row in topics:
+        if row["channel"] == channel and row["name"] == topic:
+            return row
+    names = [row["name"] for row in topics if row["channel"] == channel]
+    if not names:
+        names = ["%s > %s" % (row["channel"], row["name"]) for row in topics]
+    nearest = difflib.get_close_matches(topic, names, n=3, cutoff=0)
+    raise ValueError("no exact unresolved topic %s > %s; nearest: %s" %
+                     (channel, topic, ", ".join(nearest) if nearest else "none"))
+
+
+def set_parked(channel, topic, parked, as_name=constants.OPERATOR_IDENTITY,
+               topics=None, mutate_fn=None, now_ts=None):
+    topics = unresolved_topics(as_name) if topics is None else topics
+    row = _topic_match(channel.strip(), topic.strip(), topics)
+    mutate_fn = mutate_fn or store.mutate
+
+    def save(data):
+        if parked:
+            data[row["key"]] = time.time() if now_ts is None else now_ts
+        else:
+            data.pop(row["key"], None)
+        return data
+
+    mutate_fn(constants.PARKED_STATE, save)
+    return row
+
+
 def _loop_todos(as_name):
     cfg = api.load(as_name)
     rows = []
@@ -265,25 +342,48 @@ def _render_topic(topic, topic_lanes, cached, show_items):
     return "\n".join(lines)
 
 
+def _render_parked(rows, lane_map):
+    if not rows:
+        return ""
+    rendered = []
+    for row in rows:
+        lanes = "".join(prompts.BOARD_PARKED_LANE.format(
+            persona=digest.safe_text(lane["persona"]),
+            running=format_age(lane["running_s"]),
+            stuck=prompts.BOARD_STUCK_SUFFIX if lane["stuck"] else "",
+        ) for lane in lane_map.get((row["stream_id"], store.normalize_topic(row["name"])), []))
+        rendered.append(prompts.BOARD_PARKED_ROW.format(
+            topic=digest.safe_text(row["name"]), permalink=row["permalink"], lanes=lanes))
+    return prompts.BOARD_PARKED.format(count=len(rows), rows="\n".join(rendered))
+
+
 def render_board(lanes=None, persona_rows=None, todos=None, digests=None,
-                 as_name=constants.OPERATOR_IDENTITY, now_ts=None):
+                 as_name=constants.OPERATOR_IDENTITY, now_ts=None, parked=None):
     return "\n\n".join(content for _, content in _board_sections(
-        lanes, persona_rows, todos, digests, as_name, now_ts))
+        lanes, persona_rows, todos, digests, as_name, now_ts, parked))
 
 
 def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
-                    as_name=constants.OPERATOR_IDENTITY, now_ts=None):
+                    as_name=constants.OPERATOR_IDENTITY, now_ts=None, parked=None):
     now_ts = time.time() if now_ts is None else now_ts
     lanes = lane_rows() if lanes is None else lanes
     persona_rows = snapshot() if persona_rows is None else persona_rows
+    supplied_todos = todos is not None
     if todos is None:
         todos = merge_todos(_loop_todos(as_name), _topic_todos(as_name))
+    if parked is None:
+        parked = [] if supplied_todos else parked_topics(as_name)
     digests = store.load("digests") if digests is None else digests
     lane_map = {}
     for lane in lanes:
         key = (lane.get("stream_id"), store.normalize_topic(lane.get("topic")))
         lane_map.setdefault(key, []).append(lane)
-    topic_map = {(row.get("channel"), store.normalize_topic(row.get("name"))): row for row in todos}
+    parked_keys = {row["key"] for row in parked}
+    topic_map = {
+        (row.get("channel"), store.normalize_topic(row.get("name"))): row
+        for row in todos
+        if digest.digest_key(row.get("stream_id"), row.get("name")) not in parked_keys
+    }
     sections = [("activity", render_activity(persona_rows))]
     for group, channels in constants.BOARD_GROUPS:
         group_lines = []
@@ -304,12 +404,17 @@ def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
         if group_lines:
             body += "\n" + "\n".join(group_lines)
         sections.append((group.casefold(), body))
+    parked_body = _render_parked(parked, lane_map)
+    if parked_body:
+        name, body = sections[-1]
+        sections[-1] = (name, body + "\n\n" + parked_body)
     return sections
 
 
 def board_parts(limit, lanes=None, persona_rows=None, todos=None, digests=None,
-                as_name=constants.OPERATOR_IDENTITY, now_ts=None, force_split=False):
-    sections = _board_sections(lanes, persona_rows, todos, digests, as_name, now_ts)
+                as_name=constants.OPERATOR_IDENTITY, now_ts=None, force_split=False,
+                parked=None):
+    sections = _board_sections(lanes, persona_rows, todos, digests, as_name, now_ts, parked)
     combined = "\n\n".join(content for _, content in sections)
     if not force_split and len(combined) <= limit:
         return {"activity": combined}
@@ -419,6 +524,15 @@ def _selftest():
     else:
         failed += 1
         print("FAIL render_board(...) missing a required section or link")
+    parked_board = render_board(
+        cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000, parked=cases.BOARD_RENDER_PARKED)
+    if all(part in parked_board for part in cases.BOARD_PARKED_CONTAINS) \
+            and all(part not in parked_board for part in cases.BOARD_PARKED_FORBIDDEN):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL parked render lost its spoiler, link, or live lane")
     combined_parts = board_parts(
         10000, cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
         cases.BOARD_RENDER_DIGESTS, now_ts=200000)
@@ -458,6 +572,57 @@ def _selftest():
     else:
         failed += 1
         print("FAIL recent topic sweep -> %r calls=%r" % (recent, topic_calls))
+
+    park_state = {"7:Build board": 1, "9:resolved": 2}
+
+    def mutate_parked(name, fn):
+        result = fn(park_state)
+        if isinstance(result, dict) and result is not park_state:
+            park_state.clear()
+            park_state.update(result)
+
+    parked = parked_topics(
+        topics=cases.PARK_TOPICS, load_fn=lambda name: dict(park_state),
+        mutate_fn=mutate_parked)
+    if parked == [cases.PARK_TOPICS[0]] and park_state == {"7:Build board": 1}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL parked_topics prune -> %r state=%r" % (parked, park_state))
+
+    unresolved = unresolved_topics(
+        "bob", stream_id_fn=lambda as_name, channel: 7 if channel == "setup" else None,
+        topics_fn=lambda as_name, stream_id: cases.PARK_API_TOPICS,
+        load_fn=lambda as_name: {"site": "https://example"})
+    if unresolved == cases.PARK_API_EXPECTED:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL unresolved_topics -> %r wanted %r" %
+              (unresolved, cases.PARK_API_EXPECTED))
+
+    park_state = {}
+    parked_row = set_parked(
+        "setup", "Build board", True, topics=cases.PARK_TOPICS,
+        mutate_fn=mutate_parked, now_ts=1234)
+    parked_state = dict(park_state)
+    unparked_row = set_parked(
+        "setup", "Build board", False, topics=cases.PARK_TOPICS,
+        mutate_fn=mutate_parked, now_ts=1235)
+    try:
+        set_parked("setup", "Build bord", True, topics=cases.PARK_TOPICS,
+                   mutate_fn=mutate_parked)
+        mismatch = "accepted"
+    except ValueError as exc:
+        mismatch = str(exc)
+    if parked_row == cases.PARK_TOPICS[0] and unparked_row == cases.PARK_TOPICS[0] \
+            and parked_state == {"7:Build board": 1234} and park_state == {} \
+            and "Build board" in mismatch:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL set_parked exact control -> %r %r %r %r" %
+              (parked_row, unparked_row, parked_state, mismatch))
 
     states, current, posts, updates = {}, {}, [], []
     saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
@@ -505,9 +670,31 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("command", nargs="?", choices=("park", "unpark", "parked"))
+    ap.add_argument("channel", nargs="?")
+    ap.add_argument("topic", nargs="?")
     args = ap.parse_args()
     if args.selftest:
         return _selftest()
+    if args.command:
+        if args.json:
+            ap.error("--json does not combine with parking commands")
+        if args.command == "parked":
+            if args.channel is not None or args.topic is not None:
+                ap.error("parked takes no channel or topic")
+            rows = parked_topics()
+            print("\n".join("%s > %s" % (row["channel"], row["name"]) for row in rows)
+                  or "none")
+            return 0
+        if args.channel is None or args.topic is None:
+            ap.error("%s requires channel and topic" % args.command)
+        try:
+            row = set_parked(
+                args.channel, args.topic, args.command == "park")
+        except ValueError as exc:
+            ap.error(str(exc))
+        print("%s %s > %s" % (args.command, row["channel"], row["name"]))
+        return 0
     data = snapshot()
     if args.json:
         print(json.dumps({"lanes": lane_rows(), "personas": data}, indent=2))

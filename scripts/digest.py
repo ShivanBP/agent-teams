@@ -20,6 +20,10 @@ def digest_key(stream_id, topic):
     return "%s:%s" % (stream_id, store.normalize_topic(topic))
 
 
+def is_parked(stream_id, topic, load_fn=store.load):
+    return digest_key(stream_id, topic) in load_fn(constants.PARKED_STATE)
+
+
 def fetch_delta(as_name, stream_id, channel, topic, current):
     anchor = current.get("anchor_id")
     rows, error = read_mod.fetch(
@@ -122,6 +126,8 @@ def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=No
     model_fn = model_fn or model_call
     load_fn = load_fn or store.load
     mutate_fn = mutate_fn or store.mutate
+    if is_parked(stream_id, topic, load_fn):
+        return None
     key = digest_key(stream_id, topic)
     current = load_fn("digests").get(key, {})
     messages, next_anchor, dropped = fetch_fn(as_name, stream_id, channel, topic, current)
@@ -148,6 +154,7 @@ def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_f
     load_fn = load_fn or store.load
     refresh_fn = refresh_fn or refresh_topic
     cached = load_fn("digests")
+    parked = load_fn(constants.PARKED_STATE)
     refreshed = []
     board_channels = {channel for _, channels in constants.BOARD_GROUPS for channel in channels}
     for channel in streams_fn(as_name):
@@ -161,6 +168,8 @@ def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_f
             if not name or name.strip().startswith(constants.RESOLVED_PREFIX) or max_id is None:
                 continue
             if channel == constants.STATUS_STREAM and name == constants.BOARD_TOPIC:
+                continue
+            if digest_key(stream_id, name) in parked:
                 continue
             current = cached.get(digest_key(stream_id, name), {})
             if int(max_id) <= int(current.get("anchor_id") or 0):
@@ -225,7 +234,7 @@ def _selftest():
         "bob", 7, "setup", "topic",
         fetch_fn=lambda *a: (cases.DIGEST_MESSAGES, 22, 0),
         model_fn=lambda previous, messages: cases.DIGEST_MODEL,
-        load_fn=lambda name: state, mutate_fn=mutate, now_ts=1234)
+        load_fn=lambda name: state if name == "digests" else {}, mutate_fn=mutate, now_ts=1234)
     expected_state = {"7:topic": dict(cases.DIGEST_FILTER_EXPECTED, anchor_id=22, ts=1234)}
     if refreshed == expected_state["7:topic"] and state == expected_state:
         passed += 1
@@ -233,12 +242,23 @@ def _selftest():
         failed += 1
         print("FAIL refresh_topic -> %r state=%r" % (refreshed, state))
 
+    parked_calls = []
+    parked_result = refresh_topic(
+        "bob", 7, "setup", "topic",
+        fetch_fn=lambda *args: parked_calls.append(args),
+        load_fn=lambda name: {"7:topic": 1234} if name == constants.PARKED_STATE else {})
+    if parked_result is None and parked_calls == []:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL parked refresh ran fetch: %r %r" % (parked_result, parked_calls))
+
     calls = []
     swept = sweep_once(
         streams_fn=lambda as_name: ["random", "setup"],
         stream_id_fn=lambda as_name, channel: 7,
         topics_fn=lambda as_name, stream_id: cases.DIGEST_SWEEP_TOPICS,
-        load_fn=lambda name: cases.DIGEST_SWEEP_STATE,
+        load_fn=lambda name: cases.DIGEST_SWEEP_STATE if name == "digests" else {},
         refresh_fn=lambda *args: calls.append(args))
     if swept == cases.DIGEST_SWEEP_EXPECTED and calls == [
             (constants.OPERATOR_IDENTITY, 7, "setup", "dirty")]:
@@ -246,6 +266,20 @@ def _selftest():
     else:
         failed += 1
         print("FAIL sweep_once -> %r calls=%r" % (swept, calls))
+
+    calls = []
+    swept = sweep_once(
+        streams_fn=lambda as_name: ["setup"],
+        stream_id_fn=lambda as_name, channel: 7,
+        topics_fn=lambda as_name, stream_id: cases.DIGEST_SWEEP_TOPICS,
+        load_fn=lambda name: ({"7:dirty": 1} if name == constants.PARKED_STATE
+                              else cases.DIGEST_SWEEP_STATE),
+        refresh_fn=lambda *args: calls.append(args))
+    if swept == [] and calls == []:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL parked sweep refreshed: %r calls=%r" % (swept, calls))
 
     print("digest.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

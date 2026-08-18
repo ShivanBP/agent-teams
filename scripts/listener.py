@@ -332,6 +332,12 @@ def handle_topic_resolved(event):
     normalized = store.normalize_topic(new_subject)
     for persona in personas.PERSONAS:
         store.session_drop(store.lane_key(stream_id, normalized, persona))
+
+    def clear_parked(data):
+        data.pop(digest.digest_key(stream_id, normalized), None)
+        return data
+
+    store.mutate(constants.PARKED_STATE, clear_parked)
     log.info("topic resolved stream_id=%s topic=%r; dropped sessions for %d personas",
               stream_id, normalized, len(personas.PERSONAS))
 
@@ -781,6 +787,20 @@ def _selftest():
         else:
             failed += 1
             print("FAIL is_resolved_topic(%r) -> %r wanted %r" % (topic, got, expected))
+
+    dropped, parked = [], {"7:topic": 1234}
+    saved_drop, saved_mutate = store.session_drop, store.mutate
+    try:
+        store.session_drop = dropped.append
+        store.mutate = lambda name, fn: fn(parked)
+        handle_topic_resolved(cases.RESOLVED_EVENT)
+    finally:
+        store.session_drop, store.mutate = saved_drop, saved_mutate
+    if len(dropped) == len(personas.PERSONAS) and parked == {}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL resolved topic left sessions or parking: %r %r" % (dropped, parked))
 
     for content, expected in cases.FLAG_PARSES:
         got = parse_flags(content)

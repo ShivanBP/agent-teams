@@ -23,16 +23,18 @@ believed anyway, which is the failure this skill exists to prevent.
 
 ## Steps
 
-1. Read `memory/<persona>/MEMORY.md`, then list the directory. Build two sets: rows with no
-   file, and files with no row. Report both counts before changing anything.
+1. Read `memory/<persona>/MEMORY.md`, then list the directory. Build three sets: rows with no
+   file, files with no row, and cross-file links with no target. Report all three counts
+   before changing anything.
 2. Read every cold file. Yes, all of them. The judgments below need the contents, not the
    row summaries.
 3. Fix the index. Every file gets exactly one row. Every row names the file's actual
    subject, the ruling if there is one, and the date. Kill rows pointing at nothing.
 4. Collapse what is finished. A position marked CLOSED or superseded by a later one shrinks
    to a single row on the index and its file is deleted, with the superseding file naming
-   what it replaced. A position Mate ruled on keeps the ruling and loses the argument that
-   led there.
+   what it replaced. Treat a file's own salvage claim as a claim, not evidence: verify the
+   named successor contains every durable item before deleting. A position Mate ruled on
+   keeps the ruling and loses the argument that led there.
 5. Flag, do not fix:
    - stored facts that should have been fetched (versions, paths, prices, API shapes)
    - two files that contradict each other
@@ -102,5 +104,6 @@ edits loose in the working tree.
 Never write a persona's memory to make it agree with yours. If a persona's position looks
 wrong to you, that is a finding for the topic, not an edit.
 
-Never grow the index. If consolidation would leave `MEMORY.md` longer than it started, the
-run has failed: say so and report what resisted, rather than shipping a longer index.
+Keep `MEMORY.md` below the runner's injected-memory clip: `MEMORY_MAX_LINES` and
+`MEMORY_MAX_BYTES` in `scripts/constants.py`, currently 200 lines and 25 KB. A consolidation
+also ends with fewer cold-file words than it started, or reports what resisted.

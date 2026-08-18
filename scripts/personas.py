@@ -45,22 +45,8 @@ def _scan(directory):
 
 
 def _selftest():
-    from tests import cases
-
-    passed = failed = 0
-    for label, rows, expected_names, expected_errors in cases.PERSONA_FIXTURES:
-        with tempfile.TemporaryDirectory() as root:
-            directory = Path(root)
-            for name, body in rows:
-                (directory / name).write_text(body)
-            names, errors = _scan(directory)
-        if names == set(expected_names) and len(errors) == expected_errors:
-            passed += 1
-        else:
-            failed += 1
-            print("FAIL %s -> names=%r errors=%r" % (label, names, errors))
-    print("personas.py selftest: %d PASS, %d FAIL" % (passed, failed))
-    return 1 if failed else 0
+    from tests import personas_selftest
+    return personas_selftest.run(sys.modules[__name__])
 
 
 if __name__ == "__main__":

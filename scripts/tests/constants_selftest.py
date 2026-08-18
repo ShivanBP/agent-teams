@@ -73,6 +73,13 @@ def _body():
         failed += 1
         print("FAIL model effort defaults example does not load: %s" % exc)
 
+    if set(MODEL_EFFORT_DEFAULTS) <= set(CLAUDE_MODELS):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL model effort defaults name models absent from CLAUDE_MODELS: %r" %
+              sorted(set(MODEL_EFFORT_DEFAULTS) - set(CLAUDE_MODELS)))
+
     try:
         rails = json.loads(RAILS_EXAMPLE_PATH.read_text())
         valid_rows = all(

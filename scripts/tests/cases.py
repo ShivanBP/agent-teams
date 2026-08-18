@@ -1245,6 +1245,9 @@ WAKE_HEADER_CONTAINS = [
 # (prompts attribute name, required substring): guards strings whose content no other table
 # asserts, the vacancy behind the TAG_NOT_MATE copy-paste bug
 PROMPT_CONTAINS = [
+    ("RECORD_LINE", "{stamp}"),
+    ("RECORD_LINE", "{sender}"),
+    ("RECORD_LINE", "{body}"),
     ("TAG_NOT_MATE", "{sender}"),
     ("TAG_NOT_MATE", "not Mate"),
     ("TAG_STALE", "{max_age}"),

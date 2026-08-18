@@ -77,6 +77,16 @@ def _body():
         failed += 1
         print("FAIL resolved topic left sessions or parking: %r %r" % (dropped, parked))
 
+    vocabulary = {"-" + word for word in
+                  set(constants.CLAUDE_MODELS) | set(constants.EFFORT_LEVELS)
+                  | set(constants.PROVIDERS)}
+    if set(FLAG_WORDS) == vocabulary:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL flag words %r do not derive from the configured vocabulary %r" %
+              (sorted(FLAG_WORDS), sorted(vocabulary)))
+
     for content, expected in cases.FLAG_PARSES:
         got = parse_flags(content)
         if got == expected:

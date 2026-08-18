@@ -54,11 +54,12 @@ def is_resolved_topic(topic_name):
     return (topic_name or "").strip().startswith(constants.RESOLVED_PREFIX)
 
 
-FLAG_WORDS = ("-opus", "-fable", "-sonnet", "-low", "-mid", "-high", "-xtra",
-              "-codex", "-claude", "-agy", "-opencode")
-FLAG_TO_MODEL = {"-opus": "opus", "-fable": "fable", "-sonnet": "sonnet"}
-FLAG_TO_EFFORT = {"-low": "low", "-mid": "mid", "-high": "high", "-xtra": "xtra"}
-FLAG_TO_PROVIDER = {"-claude": "claude", "-codex": "codex", "-agy": "agy", "-opencode": "opencode"}
+# A flag word is its vocabulary word with a dash: adding a model, effort level or provider is
+# one edit in constants.py or a config file, never a second one here.
+FLAG_TO_MODEL = {"-" + name: name for name in constants.CLAUDE_MODELS}
+FLAG_TO_EFFORT = {"-" + level: level for level in constants.EFFORT_LEVELS}
+FLAG_TO_PROVIDER = {"-" + name: name for name in constants.PROVIDERS}
+FLAG_WORDS = tuple(FLAG_TO_MODEL) + tuple(FLAG_TO_EFFORT) + tuple(FLAG_TO_PROVIDER)
 
 
 def parse_flags(content):

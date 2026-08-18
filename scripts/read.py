@@ -55,7 +55,9 @@ def render(messages, site=None):
     lines = [prompts.RECORD_HEADER]
     for msg in messages:
         stamp = datetime.datetime.fromtimestamp(msg["timestamp"]).strftime("%Y-%m-%d %H:%M")
-        line = "[%s] %s: %s" % (stamp, msg.get("sender_full_name", "?"), indent(msg.get("content", "")))
+        line = prompts.RECORD_LINE.format(
+            stamp=stamp, sender=msg.get("sender_full_name", "?"),
+            body=indent(msg.get("content", "")))
         if site:
             line += "\n    " + api.permalink(
                 site, msg.get("stream_id"), msg.get("display_recipient", ""),

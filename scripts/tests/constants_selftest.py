@@ -19,6 +19,7 @@ def _body():
     # prompts.py is imported here, not at module scope: constants.py stays a leaf every other
     # module can load first, with no dependencies of its own beyond stdlib.
     import prompts
+    from tests import estate
 
     passed = failed = 0
     if STALL_MIN == cases.STALL_MIN_DEFAULT:
@@ -31,7 +32,9 @@ def _body():
     try:
         example = json.loads(MATRIX_EXAMPLE_PATH.read_text())
         valid_rows = all(
-            isinstance(row, dict) and set(row) == {"provider", "model", "effort"}
+            isinstance(row, dict)
+            and {"provider", "model", "effort"} <= set(row)
+            <= {"provider", "model", "effort", "display", "worktree"}
             and row["effort"] in _EFFORT_SCALE
             for row in example.values()
         )
@@ -97,6 +100,21 @@ def _body():
         failed += 1
         print("FAIL rails example does not load: %s" % exc)
 
+    try:
+        channels = json.loads(CHANNELS_EXAMPLE_PATH.read_text())
+        valid_rows = all(
+            isinstance(names, list) and names
+            and all(isinstance(name, str) and name for name in names)
+            for names in channels.values())
+        if channels and valid_rows:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL channels example is empty or its groups are invalid")
+    except (OSError, ValueError) as exc:
+        failed += 1
+        print("FAIL channels example does not load: %s" % exc)
+
     for rail, expected in cases.RAIL_DEFAULTS:
         try:
             got = set(rail_defaults(rail))
@@ -150,13 +168,45 @@ def _body():
             print("FAIL _mate_emails(%r, %r) -> %r wanted %r" %
                   (plural, singular, got, expected))
 
-    channels = board_channels()
-    if channels == cases.BOARD_CHANNELS:
+    for config, expected in cases.CHANNEL_GROUPS:
+        groups = board_groups(config)
+        flat = {channel for names in config.values() for channel in names}
+        if groups == expected and board_channels(groups) == flat:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL board_groups(%r) -> %r wanted %r" % (config, groups, expected))
+
+    for role, expected in cases.WORKTREE_ROLES:
+        got = worktree_roles(role, cases.WORKTREE_ROLE_MATRIX)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL worktree_roles(%r) -> %r wanted %r" % (role, got, expected))
+
+    # The estate tripwire. Names come from both matrices: the live one is the estate of record,
+    # the example is all a clone and CI have, and a hit in either is machinery gone personal.
+    estate_names = estate.names(json.loads(MATRIX_EXAMPLE_PATH.read_text()))
+    if MATRIX_PATH.is_file():
+        estate_names |= estate.names(json.loads(MATRIX_PATH.read_text()))
+    found = []
+    for path in sorted((REPO_DIR / "scripts").glob("*.py")):
+        found.extend("%s:%d %s" % (path.name, line, needle)
+                     for line, needle in estate.hits(path.read_text(), estate_names))
+    if not found:
         passed += 1
     else:
         failed += 1
-        print("FAIL board_channels() -> %r wanted %r" %
-              (channels, cases.BOARD_CHANNELS))
+        print("FAIL estate values in scripts/: %s" % ", ".join(found))
+
+    for label, source, expected in cases.ESTATE_FIXTURES:
+        got = sorted(needle for _, needle in estate.hits(source, cases.ESTATE_NAMES))
+        if got == sorted(expected):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL estate %s -> %r wanted %r" % (label, got, expected))
 
     # prose-agreement pins: constants own the numbers, prompts.py owns the hand-written words
     # describing them; this catches the two drifting apart (Jan's 2026-08-12 finding).

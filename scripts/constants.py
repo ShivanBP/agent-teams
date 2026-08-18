@@ -19,6 +19,8 @@ MODEL_EFFORT_DEFAULTS_PATH = REPO_DIR / "config" / "model-effort-defaults.json"
 MODEL_EFFORT_DEFAULTS_EXAMPLE_PATH = REPO_DIR / "config" / "model-effort-defaults.example.json"
 RAILS_PATH = REPO_DIR / "config" / "rails.json"
 RAILS_EXAMPLE_PATH = REPO_DIR / "config" / "rails.example.json"
+CHANNELS_PATH = REPO_DIR / "config" / "channels.json"
+CHANNELS_EXAMPLE_PATH = REPO_DIR / "config" / "channels.example.json"
 
 
 def _load_json_object(path, example_path, label):
@@ -62,10 +64,15 @@ def _load_rails():
     return _load_json_object(RAILS_PATH, RAILS_EXAMPLE_PATH, "rails")
 
 
+def _load_channels():
+    return _load_json_object(CHANNELS_PATH, CHANNELS_EXAMPLE_PATH, "channels")
+
+
 _MATRIX = _load_matrix()
 HARNESS_DEFAULTS = _load_harness_defaults()
 MODEL_EFFORT_DEFAULTS = _load_model_effort_defaults()
 _RAILS = _load_rails()
+_CHANNELS = _load_channels()
 
 _EFFORT_SCALE = {
     "low": {"claude": "low", "codex": "low", "opencode": "low", "agy": "low"},
@@ -206,14 +213,19 @@ LAST_ACTION_LABELS = {
     "opencode:tool": "using tool",
 }
 
-BOARD_GROUPS = (
-    ("Workshop", ("setup", "maintenance", "scheduled-jobs", "status")),
-    ("Domains", ("foundry", "job-search", "money", "outer-realms", "peter's")),
-)
+
+def board_groups(channels=None):
+    """The board's channel groups, in config order."""
+    rows = _CHANNELS if channels is None else channels
+    return tuple((group, tuple(names)) for group, names in rows.items())
 
 
-def board_channels():
-    return {channel for _, channels in BOARD_GROUPS for channel in channels}
+BOARD_GROUPS = board_groups()
+
+
+def board_channels(groups=None):
+    return {channel for _, channels in (BOARD_GROUPS if groups is None else groups)
+            for channel in channels}
 
 
 BOARD_STATE_KEYS = {
@@ -232,8 +244,17 @@ ATTACH_ROOTS = (str(Path.home() / "Projects"), str(LOGS_DIR))
 # One build worktree per topic. Kept under ~/Projects so ATTACH_ROOTS still admits a path a
 # build wake attaches; builders always get one, verifiers only join one that already exists.
 WORKTREE_ROOT = Path.home() / "Projects" / "agent-team-worktrees"
-WORKTREE_PERSONAS = ("bob", "peter")
-WORKTREE_JOIN = ("jan", "eve")
+
+
+def worktree_roles(role, matrix=None):
+    """Personas the matrix gives that worktree role, in matrix order."""
+    rows = _MATRIX if matrix is None else matrix
+    return tuple(name for name, row in rows.items()
+                 if isinstance(row, dict) and row.get("worktree") == role)
+
+
+WORKTREE_PERSONAS = worktree_roles("build")
+WORKTREE_JOIN = worktree_roles("join")
 
 _WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
 

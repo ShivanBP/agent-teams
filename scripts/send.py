@@ -14,10 +14,15 @@ ATTACH_LINE = re.compile(r"^[ \t]*\[attach:[ \t]*(.+?)[ \t]*\][ \t]*$")
 
 ZWSP = "\u200b"
 _WILDCARD = re.compile(r"@(_?)\*\*(all|everyone|channel|topic|stream)\*\*")
-_PERSONA_MENTION = re.compile(
-    r"@(\*\*(?:%s)(?:\|\d+)?\*\*)" % "|".join(map(re.escape, personas_mod.MENTION_NAMES)),
-    re.IGNORECASE,
-)
+
+
+def mention_pattern(names):
+    """@**name** in any capitalization, with or without Zulip's |id suffix."""
+    return re.compile(
+        r"@(\*\*(?:%s)(?:\|\d+)?\*\*)" % "|".join(map(re.escape, names)), re.IGNORECASE)
+
+
+_PERSONA_MENTION = mention_pattern(personas_mod.MENTION_NAMES)
 
 
 def strip_wildcards(text):
@@ -25,11 +30,12 @@ def strip_wildcards(text):
     return _WILDCARD.sub(lambda m: ZWSP.join(("@", "%s**%s**" % (m.group(1), m.group(2)))), text or "")
 
 
-def strip_persona_mentions(text, as_name):
+def strip_persona_mentions(text, as_name, names=None):
     """Persona posts cannot wake other personas; bridge-issued kicks retain real mentions."""
-    if as_name not in personas_mod.PERSONAS:
+    if as_name not in (personas_mod.PERSONAS if names is None else names):
         return text
-    return _PERSONA_MENTION.sub(lambda m: ZWSP.join(("@", m.group(1))), text or "")
+    pattern = _PERSONA_MENTION if names is None else mention_pattern(names)
+    return pattern.sub(lambda m: ZWSP.join(("@", m.group(1))), text or "")
 
 
 def classify_attach(path, index, exists, is_dir, size, is_symlink=False):

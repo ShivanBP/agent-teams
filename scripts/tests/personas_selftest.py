@@ -38,8 +38,16 @@ def _body():
         else:
             failed += 1
             print("FAIL %s -> names=%r errors=%r" % (label, names, errors))
+    example = json.loads(constants.MATRIX_EXAMPLE_PATH.read_text())
+    names = load_display_names(example)
+    if names == cases.PERSONA_DISPLAY_MAP:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL load_display_names(example) -> %r wanted %r"
+              % (names, cases.PERSONA_DISPLAY_MAP))
     for name, expected in cases.PERSONA_DISPLAY_NAMES:
-        got = display_name(name)
+        got = display_name(name, names)
         if got == expected:
             passed += 1
         else:

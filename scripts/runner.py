@@ -491,15 +491,15 @@ def wake_slug(stream_id, topic):
     return "%s-%s" % (stream_id, slug) if slug else str(stream_id)
 
 
-def wants_worktree(identity, exists):
+def wants_worktree(identity, exists, build=None, join=None):
     """Builders always get one; verifiers join the topic's worktree only when it is already there."""
-    if identity in constants.WORKTREE_PERSONAS:
+    if identity in (constants.WORKTREE_PERSONAS if build is None else build):
         return True
-    return bool(exists) and identity in constants.WORKTREE_JOIN
+    return bool(exists) and identity in (constants.WORKTREE_JOIN if join is None else join)
 
 
 _WORKTREE_LINKS = (".venv", "config/persona-matrix.json", "config/harness-defaults.json",
-                   "config/model-effort-defaults.json")
+                   "config/model-effort-defaults.json", "config/channels.json")
 
 
 def _worktree_add(path, branch):

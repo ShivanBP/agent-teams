@@ -13,13 +13,21 @@ def load_personas(matrix=None):
     return tuple(matrix if matrix is not None else constants.persona_matrix())
 
 
+def load_display_names(matrix=None):
+    """Names the matrix spells out for itself. Anything else capitalizes, so only a name
+    capitalize gets wrong needs a row."""
+    rows = matrix if matrix is not None else constants.persona_matrix()
+    return {name: row["display"] for name, row in rows.items()
+            if isinstance(row, dict) and row.get("display")}
+
+
 PERSONAS = load_personas()
-DISPLAY_NAMES = {"maat": "Ma'at"}
+DISPLAY_NAMES = load_display_names()
 MENTION_NAMES = tuple(dict.fromkeys(PERSONAS + tuple(DISPLAY_NAMES.values())))
 
 
-def display_name(name):
-    return DISPLAY_NAMES.get(name, name.capitalize())
+def display_name(name, names=None):
+    return (DISPLAY_NAMES if names is None else names).get(name, name.capitalize())
 
 def _frontmatter(path):
     text = path.read_text()

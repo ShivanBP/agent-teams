@@ -56,12 +56,13 @@ Personas can post, react, attach, and read, as themselves only (api.enforce_iden
 Persona posts cannot wake other personas; bridge-issued kicks are the exception.
 Channel and topic management, resolving included, is Mate's job in the Zulip UI.
 
-Mate can select a provider (`-claude`, `-codex`, `-agy`, `-opencode`), a model (`-opus`,
-`-fable`), and an effort level (`-low`, `-mid`, `-high`, `-xtra`) for any wake. The last
-explicit flag in each category wins, and providers stay sticky with the topic's session.
-Switching provider starts a fresh session. Default persona-provider-model-effort assignments
-live in `config/persona-matrix.json`. Provider and model flags from anyone else are stripped
-and ignored. The tracked `.example.json` is only a template; once the live file exists,
+Flag holders can select a provider (`-claude`, `-codex`, `-agy`, `-opencode`), a model
+(`-opus`, `-fable`), and an effort level (`-low`, `-mid`, `-high`, `-xtra`) for any wake.
+The current flag holders are Mate and John Fechter. The last explicit flag in each category
+wins, and providers stay sticky with the topic's session. Switching provider starts a fresh
+session. Default persona-provider-model-effort assignments live in
+`config/persona-matrix.json`. Flags from anyone else are stripped and ignored. The tracked
+`.example.json` is only a template; once the live file exists,
 edits to the example are ignored. Config is read once at listener start; after editing the
 live file, run `scripts/restart.sh`. Effort levels translate per provider; unsupported
 combinations such as `agy + xtra` are rejected.

@@ -29,7 +29,8 @@ log = logging.getLogger("agent-team.listener")
 
 IDENTITIES = list(personas.PERSONAS) + [constants.OPERATOR_IDENTITY]
 
-_MATE_ID = {}
+_USER_IDS = {}
+_USER_IDS_LOCK = threading.Lock()
 
 
 # --- pure helpers (table-tested by --selftest) -------------------------------------------------
@@ -66,7 +67,7 @@ PROVIDER_PERSONAS = {
 def parse_flags(content):
     """Detects flag words for any sender and always strips them from the body, so a persona never
     sees flag noise. Whether they apply is the caller's call: model/effort/provider flags parse only off
-    Mate's own resolved user id (invariant); handle_wake makes that decision, not this function."""
+    resolved flag-holder user ids (invariant); handle_wake makes that decision, not this function."""
     words = (content or "").split()
     found = [w for w in words if w in FLAG_WORDS]
     if not found:
@@ -214,39 +215,64 @@ def is_tag_stale(msg_timestamp, now_ts, max_age_min):
     return (now_ts - msg_timestamp) > max_age_min * 60
 
 
-# --- identity / Mate resolution ------------------------------------------------------------------
+# --- identity / flag-holder resolution -----------------------------------------------------------
+
+def _resolve_user_ids(identity):
+    if "flag_holder_ids" in _USER_IDS:
+        return
+    with _USER_IDS_LOCK:
+        if "flag_holder_ids" in _USER_IDS:
+            return
+        holder_emails = constants.AGENT_TEAM_MATE_EMAILS
+        mate_email = constants.AGENT_TEAM_MATE_EMAIL
+        mate_id = None
+        mention = ""
+        holder_ids = set()
+        resolved_emails = set()
+        if not holder_emails and not mate_email:
+            log.warning("AGENT_TEAM_MATE_EMAILS and AGENT_TEAM_MATE_EMAIL are empty; "
+                        "flags and operator-rail checks stay off")
+        else:
+            payload = api.request(api.load(identity), "GET", "/api/v1/users")
+            if payload.get("result") == "success":
+                for user in payload.get("members", []):
+                    email = user.get("email")
+                    if email in holder_emails:
+                        holder_ids.add(user.get("user_id"))
+                        resolved_emails.add(email)
+                    if mate_email and email == mate_email:
+                        mate_id = user.get("user_id")
+                        mention = "@**%s**" % user.get("full_name", "Mate")
+        missing = holder_emails - resolved_emails
+        if missing:
+            log.error("could not resolve flag-holder emails to user ids: %s",
+                      ", ".join(sorted(missing)))
+        if mate_email and mate_id is None:
+            log.error("could not resolve AGENT_TEAM_MATE_EMAIL=%s to a user id", mate_email)
+        elif not mate_email and holder_emails:
+            log.warning("AGENT_TEAM_MATE_EMAIL is empty; operator-rail checks stay off")
+        _USER_IDS["mate_id"] = mate_id
+        _USER_IDS["mention"] = mention
+        _USER_IDS["flag_holder_ids"] = frozenset(holder_ids)
+
 
 def mate_user_id(identity=constants.OPERATOR_IDENTITY):
-    """Resolve Mate's user id once via GET /users under the given identity's auth (amendment 4).
-    His display name is resolved in the same call and cached alongside it for mate_mention()."""
-    if "id" not in _MATE_ID:
-        if not constants.AGENT_TEAM_MATE_EMAIL:
-            log.warning("AGENT_TEAM_MATE_EMAIL is empty; flags and operator-rail checks stay off")
-            _MATE_ID["id"] = None
-            _MATE_ID["mention"] = ""
-            return None
-        cfg = api.load(identity)
-        payload = api.request(cfg, "GET", "/api/v1/users")
-        uid = None
-        mention = ""
-        if payload.get("result") == "success":
-            for u in payload.get("members", []):
-                if u.get("email") == constants.AGENT_TEAM_MATE_EMAIL:
-                    uid = u.get("user_id")
-                    mention = "@**%s**" % u.get("full_name", "Mate")
-                    break
-        if uid is None:
-            log.error("could not resolve AGENT_TEAM_MATE_EMAIL=%s to a user id", constants.AGENT_TEAM_MATE_EMAIL)
-        _MATE_ID["id"] = uid
-        _MATE_ID["mention"] = mention
-    return _MATE_ID["id"]
+    """Resolve and cache Mate's Rail B id alongside the flag-holder id set."""
+    _resolve_user_ids(identity)
+    return _USER_IDS["mate_id"]
+
+
+def flag_holder_user_ids(identity=constants.OPERATOR_IDENTITY):
+    """Resolve and cache the user ids whose per-message flags apply."""
+    _resolve_user_ids(identity)
+    return _USER_IDS["flag_holder_ids"]
 
 
 def mate_mention():
     """Zulip mentions of Mate are @-mentions of his resolved display name (amendment 3: there is
     no separate operator bot to tag him from)."""
     mate_user_id()
-    return _MATE_ID.get("mention", "")
+    return _USER_IDS.get("mention", "")
 
 
 # --- the delta record: only messages newer than the lane's stored anchor ------------------------
@@ -304,7 +330,7 @@ def handle_topic_resolved(event):
 
 # --- the wake path ---------------------------------------------------------------------------
 
-def handle_wake(identity, event, mate_id):
+def handle_wake(identity, event, flag_holder_ids):
     msg = event.get("message") or {}
     stream_id = msg.get("stream_id")
     channel = msg.get("display_recipient")
@@ -322,10 +348,11 @@ def handle_wake(identity, event, mate_id):
 
     flags, body = parse_flags(content)
     if flags:
-        if mate_id is not None and sender_id == mate_id:
+        if sender_id in flag_holder_ids:
             pass  # applied below via flags_to_overrides
         else:
-            log.info("flags %s from non-Mate sender %s ignored on lane %s", flags, sender_id, lane)
+            log.info("flags %s from non-flag-holder sender %s ignored on lane %s",
+                     flags, sender_id, lane)
             flags = []
     model, effort = flags_to_overrides(flags)
 
@@ -582,7 +609,7 @@ def operator_tag_worker(event, mate_id):
 
 # --- catch-up: backfill mentions missed while the daemon was down --------------------------------
 
-def backfill(identity, mate_id, persona_emails):
+def backfill(identity, mate_id, flag_holder_ids, persona_emails):
     """Covers personas and the operator identity: a queue re-registration gap can drop a Rail B
     tag as silently as a persona wake, and handle_operator_tag's staleness guard makes replaying
     an old tag here safe (it skips and logs rather than answering late)."""
@@ -612,7 +639,7 @@ def backfill(identity, mate_id, persona_emails):
             if identity == constants.OPERATOR_IDENTITY:
                 handle_operator_tag(fake_event, mate_id)
             else:
-                handle_wake(identity, fake_event, mate_id)
+                handle_wake(identity, fake_event, flag_holder_ids)
         except (Exception, SystemExit):
             log.exception("backfill wake failed for %s message %s", identity, msg.get("id"))
     if messages:
@@ -627,18 +654,19 @@ def run_identity(identity, persona_emails):
     log.info("starting identity %s", identity)
     me = api.me(identity)
     mate_id = mate_user_id()
+    flag_holder_ids = flag_holder_user_ids()
 
     if identity in personas.PERSONAS or identity == constants.OPERATOR_IDENTITY:
         try:
-            backfill(identity, mate_id, persona_emails)
+            backfill(identity, mate_id, flag_holder_ids, persona_emails)
         except Exception:
             log.exception("backfill crashed for %s", identity)
 
-    def wake_worker(msg_id, event, mate_id_for_wake):
+    def wake_worker(msg_id, event, flag_holder_ids_for_wake):
         # Never let SystemExit (send.py, api.py) escape a thread's callback and kill it silently;
         # KeyboardInterrupt is not Exception or SystemExit, so it still propagates (finding 3b).
         try:
-            handle_wake(identity, event, mate_id_for_wake)
+            handle_wake(identity, event, flag_holder_ids_for_wake)
         except (Exception, SystemExit):
             log.exception("unhandled error waking %s on message %s", identity, msg_id)
 
@@ -678,7 +706,7 @@ def run_identity(identity, persona_emails):
         # queuing behind each other (finding 4).
         threading.Thread(
             target=wake_worker,
-            args=(msg_id, event, mate_user_id()),
+            args=(msg_id, event, flag_holder_user_ids()),
             name="wake-%s-%s" % (identity, msg_id),
             daemon=True,
         ).start()
@@ -796,6 +824,36 @@ def _selftest():
             failed += 1
             print("FAIL is_tag_stale(%r, %r, %r) -> %r wanted %r" % (msg_ts, now_ts, max_age, got, expected))
 
+    saved_resolution = (api.load, api.request, constants.AGENT_TEAM_MATE_EMAIL,
+                        constants.AGENT_TEAM_MATE_EMAILS, dict(_USER_IDS))
+    try:
+        for singular, holder_emails, members, expected_mate, expected_holders, expected_mention in cases.USER_ID_RESOLUTIONS:
+            calls = []
+            constants.AGENT_TEAM_MATE_EMAIL = singular
+            constants.AGENT_TEAM_MATE_EMAILS = holder_emails
+            _USER_IDS.clear()
+            api.load = lambda identity: identity
+
+            def _users_request(cfg, method, path, members=members):
+                calls.append((cfg, method, path))
+                return {"result": "success", "members": members}
+
+            api.request = _users_request
+            got = (mate_user_id("selftest"), flag_holder_user_ids("selftest"), mate_mention())
+            expected = (expected_mate, expected_holders, expected_mention)
+            if got == expected and calls == [("selftest", "GET", "/api/v1/users")]:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL user id resolution -> %r calls=%r wanted %r and one GET" %
+                      (got, calls, expected))
+    finally:
+        api.load, api.request = saved_resolution[:2]
+        constants.AGENT_TEAM_MATE_EMAIL = saved_resolution[2]
+        constants.AGENT_TEAM_MATE_EMAILS = saved_resolution[3]
+        _USER_IDS.clear()
+        _USER_IDS.update(saved_resolution[4])
+
     # Both rails driven for real with runner.run stubbed; the stub raises so no cost row is written.
     class _Stop(Exception):
         pass
@@ -862,6 +920,54 @@ def _selftest():
             failed += 1
             print("FAIL %s brief carried no state block (%r)" % (label, substring))
 
+    class _LogCapture(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            self.messages.append(record.getMessage())
+
+    for index, (label, sender_id, holder_ids, content, expected_flags, log_substring) in enumerate(
+            cases.FLAG_HOLDER_WAKES):
+        selected_flags = []
+        capture = _LogCapture()
+        old_level = log.level
+        saved_wake = (runner.run, runner.wake_cwd, send_mod.react, send_mod.post,
+                      build_delta_record, provider_for_wake)
+
+        def _capture_provider(identity, flags, row):
+            selected_flags.append(list(flags))
+            return "claude"
+
+        try:
+            log.setLevel(logging.INFO)
+            log.addHandler(capture)
+            runner.run = _stub_run
+            runner.wake_cwd = lambda *a, **k: (None, "")
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            globals()["provider_for_wake"] = _capture_provider
+            handle_wake("bob", {"message": {"stream_id": "selftest-holder-%d" % index,
+                                              "subject": label, "display_recipient": "c",
+                                              "content": content, "sender_id": sender_id,
+                                              "id": 20 + index}}, holder_ids)
+        finally:
+            log.removeHandler(capture)
+            log.setLevel(old_level)
+            runner.run, runner.wake_cwd = saved_wake[:2]
+            send_mod.react, send_mod.post = saved_wake[2:4]
+            globals()["build_delta_record"] = saved_wake[4]
+            globals()["provider_for_wake"] = saved_wake[5]
+        logged = log_substring is None or any(log_substring in message for message in capture.messages)
+        if selected_flags == [expected_flags] and logged:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s selected flags %r logs=%r wanted %r log=%r" %
+                  (label, selected_flags, capture.messages, expected_flags, log_substring))
+
     # The wake-failure path driven for real, everything outward stubbed: the run raises, and the
     # lane's dead session must be gone before any retry can resume it.
     for lane, session, error, expected in cases.WAKE_SESSION_CLEARED_ON_FAILURE:
@@ -884,7 +990,7 @@ def _selftest():
             globals()["build_delta_record"] = lambda *a, **k: ("", None)
             handle_wake(identity, {"message": {"stream_id": stream_id, "subject": topic,
                                                "display_recipient": "c", "content": "go",
-                                               "sender_id": 7, "id": 3}}, None)
+                                               "sender_id": 7, "id": 3}}, frozenset())
         finally:
             runner.run, runner.wake_cwd = saved_wake[0], saved_wake[1]
             send_mod.react, send_mod.post = saved_wake[2], saved_wake[3]

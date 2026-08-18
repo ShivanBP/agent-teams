@@ -92,6 +92,11 @@ def _num(name, default, cast):
         raise SystemExit("bad value for %s: %r" % (name, raw))
 
 
+def _mate_emails(plural, singular):
+    raw = singular if plural is None else plural
+    return frozenset(part.strip() for part in (raw or "").split(",") if part.strip())
+
+
 # Secrets and runtime state live under ~/.config/agent-team only, never in the repo.
 # Prefixed env vars only: bare CONFIG_DIR/STATE_DIR/LOGS_DIR collide with generic shell vars.
 CONFIG_DIR = Path(os.environ.get("AGENT_TEAM_CONFIG_DIR", Path.home() / ".config" / "agent-team"))
@@ -129,6 +134,8 @@ TAG_MAX_AGE_MIN = _num("TAG_MAX_AGE_MIN", 30, int)
 RECORD_WINDOW = _num("RECORD_WINDOW", 10, int)
 LOOP_BUDGET_DEFAULT = _num("LOOP_BUDGET_DEFAULT", 5, int)
 AGENT_TEAM_MATE_EMAIL = os.environ.get("AGENT_TEAM_MATE_EMAIL", "")
+AGENT_TEAM_MATE_EMAILS = _mate_emails(
+    os.environ.get("AGENT_TEAM_MATE_EMAILS"), AGENT_TEAM_MATE_EMAIL)
 
 OPERATOR_IDENTITY = os.environ.get("OPERATOR_IDENTITY", "bridge")
 EMOJI_RECEIPT = os.environ.get("EMOJI_RECEIPT", "eyes")
@@ -253,6 +260,15 @@ def _selftest():
             failed += 1
             print("FAIL _num(raw=%r, default=%r) -> got=%r exited=%s wanted=%r exit=%s" %
                   (raw, default, got, exited, expected, expect_exit))
+
+    for plural, singular, expected in cases.MATE_EMAIL_SETS:
+        got = _mate_emails(plural, singular)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _mate_emails(%r, %r) -> %r wanted %r" %
+                  (plural, singular, got, expected))
 
     # prose-agreement pins: constants own the numbers, prompts.py owns the hand-written words
     # describing them; this catches the two drifting apart (Jan's 2026-08-12 finding).

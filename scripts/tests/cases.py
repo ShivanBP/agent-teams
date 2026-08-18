@@ -494,7 +494,7 @@ RESOLVED_TOPICS = [
 
 # (content, expected (flags, stripped_body)) for listener.parse_flags
 # parse_flags detects and strips flag words for any sender; whether they apply is handle_wake's
-# call (sender must resolve to Mate's own user id), never parse_flags'.
+# call (sender must resolve to a flag-holder user id), never parse_flags'.
 FLAG_PARSES = [
     ("plain body, no flags", ([], "plain body, no flags")),
     ("-opus do the thing", (["-opus"], "do the thing")),
@@ -510,6 +510,29 @@ FLAG_PARSES = [
     ("-opencode review this", (["-opencode"], "review this")),
     ("-codex -claude last wins", (["-codex", "-claude"], "last wins")),
     ("no dashes here -notaflag", ([], "no dashes here -notaflag")),
+]
+
+# (singular email, holder emails, API members, expected Mate id, holder ids, mention)
+USER_ID_RESOLUTIONS = [
+    (
+        "mate@example.com",
+        frozenset({"mate@example.com", "john@example.com"}),
+        [
+            {"email": "john@example.com", "user_id": 8, "full_name": "John"},
+            {"email": "mate@example.com", "user_id": 7, "full_name": "Mate"},
+            {"email": "other@example.com", "user_id": 9, "full_name": "Other"},
+        ],
+        7,
+        frozenset({7, 8}),
+        "@**Mate**",
+    ),
+]
+
+# (label, sender id, holder ids, content, expected flags at provider selection, log substring)
+FLAG_HOLDER_WAKES = [
+    ("second holder applies", 8, frozenset({7, 8}), "-sonnet go", ["-sonnet"], None),
+    ("non-holder stripped", 9, frozenset({7, 8}), "-sonnet go", [],
+     "non-flag-holder sender 9"),
 ]
 
 # (identity, flags, session row, matrix, expected provider) for listener.provider_for_wake
@@ -1097,4 +1120,14 @@ NUM_PARSES = [
     ("", 30, int, False, 30),
     ("   ", 30, int, False, 30),
     ("not-a-number", 30, int, True, None),
+]
+
+# (plural value or None, singular fallback, expected set) for constants._mate_emails
+MATE_EMAIL_SETS = [
+    ("mate@example.com,john@example.com", "legacy@example.com",
+     frozenset({"mate@example.com", "john@example.com"})),
+    (None, "legacy@example.com", frozenset({"legacy@example.com"})),
+    (" mate@example.com, , john@example.com ", "legacy@example.com",
+     frozenset({"mate@example.com", "john@example.com"})),
+    (None, "", frozenset()),
 ]

@@ -60,6 +60,10 @@ def run(commit_mod):
             os.environ, PYTHONPATH=str(Path(__file__).parents[1])), stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL)
 
+    child = ("import pathlib,sys,commit,store; commit.REPO_DIR=pathlib.Path(sys.argv[1]); "
+             "store.STATE_DIR=pathlib.Path(sys.argv[2]); sys.exit(commit.main(sys.argv[3:]))")
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).parents[1]))
+
     try:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -67,7 +71,14 @@ def run(commit_mod):
             raw(root, "init", "--bare", str(remote)); raw(root, "init", str(repo))
             raw(repo, "config", "user.email", "selftest@example.com")
             raw(repo, "config", "user.name", "Selftest")
-            write(repo, "base.txt", "base\n"); raw(repo, "add", "--", "base.txt")
+            (repo / "memory").mkdir()
+            write(repo, ".gitattributes",
+                  (Path(__file__).resolve().parents[2] / ".gitattributes").read_text())
+            write(repo, "base.txt", "base\n")
+            write(repo, "memory/concurrent.md", "base\n")
+            write(repo, "memory/same-line.md", "original\n")
+            write(repo, "memory/deletion.md", "first\nremove\nlast\n")
+            raw(repo, "add", "--", ".gitattributes", "base.txt", "memory")
             raw(repo, "commit", "-m", "base"); raw(repo, "branch", "-M", "main")
             raw(repo, "remote", "add", "origin", str(remote)); raw(repo, "push", "-u", "origin", "main")
             raw(remote, "symbolic-ref", "HEAD", "refs/heads/main")
@@ -136,9 +147,6 @@ def run(commit_mod):
             serial = root / "serial"; raw(root, "clone", str(remote), str(serial))
             raw(serial, "config", "user.email", "serial@example.com"); raw(serial, "config", "user.name", "Serial")
             write(serial, "one.txt", "one\n"); write(serial, "two.txt", "two\n")
-            child = ("import pathlib,sys,commit,store; commit.REPO_DIR=pathlib.Path(sys.argv[1]); "
-                     "store.STATE_DIR=pathlib.Path(sys.argv[2]); sys.exit(commit.main(sys.argv[3:]))")
-            env = dict(os.environ, PYTHONPATH=str(Path(__file__).parents[1]))
             with store._locked("git"):
                 ps = [subprocess.Popen([sys.executable, "-c", child, str(serial), str(state), "-m", name, name + ".txt"],
                                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -148,12 +156,81 @@ def run(commit_mod):
             codes = [proc.wait(timeout=10) for proc in ps]
             results["concurrent commits serialize"] = waited and codes == [0, 0] and clean_stash(serial)
 
+            append_a, append_b = root / "append-a", root / "append-b"
+            for clone in (append_a, append_b):
+                raw(root, "clone", str(remote), str(clone))
+                raw(clone, "config", "user.email", "memory@example.com")
+                raw(clone, "config", "user.name", "Memory")
+            write(append_a, "memory/concurrent.md", "base\nleft\n")
+            write(append_b, "memory/concurrent.md", "base\nright\n")
+            ps = [subprocess.Popen(
+                [sys.executable, "-c", child, str(clone), str(state), "-m", name,
+                 "memory/concurrent.md"], env=env, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+                for clone, name in ((append_a, "left append"), (append_b, "right append"))]
+            codes = [proc.wait(timeout=10) for proc in ps]
+            raw(append_a, "pull", "--ff-only")
+            concurrent_lines = (append_a / "memory/concurrent.md").read_text().splitlines()
+            results["concurrent memory appends union"] = (
+                codes == [0, 0] and concurrent_lines[0] == "base"
+                and set(concurrent_lines[1:]) == {"left", "right"}
+                and clean_stash(append_a) and clean_stash(append_b))
+
+            line_a, line_b = root / "line-a", root / "line-b"
+            for clone in (line_a, line_b):
+                raw(root, "clone", str(remote), str(clone))
+                raw(clone, "config", "user.email", "memory@example.com")
+                raw(clone, "config", "user.name", "Memory")
+            write(line_a, "memory/same-line.md", "left version\n")
+            write(line_b, "memory/same-line.md", "right version\n")
+            commit_mod.REPO_DIR = line_a
+            left_code, _, _ = invoke(["-m", "left line", "memory/same-line.md"])
+            commit_mod.REPO_DIR = line_b
+            right_code, _, _ = invoke(["-m", "right line", "memory/same-line.md"])
+            line_text = (line_b / "memory/same-line.md").read_text()
+            results["same-line memory edits stack"] = (
+                left_code == right_code == 0 and "left version" in line_text
+                and "right version" in line_text and "<<<<<<<" not in line_text
+                and clean_stash(line_a) and clean_stash(line_b))
+
+            delete_a, delete_b = root / "delete-a", root / "delete-b"
+            for clone in (delete_a, delete_b):
+                raw(root, "clone", str(remote), str(clone))
+                raw(clone, "config", "user.email", "memory@example.com")
+                raw(clone, "config", "user.name", "Memory")
+            write(delete_a, "memory/deletion.md", "first\nlast\n")
+            write(delete_b, "memory/deletion.md", "first\nremove\nadded\nlast\n")
+            commit_mod.REPO_DIR = delete_a
+            delete_code, _, _ = invoke(["-m", "delete line", "memory/deletion.md"])
+            commit_mod.REPO_DIR = delete_b
+            append_code, _, _ = invoke(["-m", "adjacent append", "memory/deletion.md"])
+            deletion_text = (delete_b / "memory/deletion.md").read_text()
+            results["memory deletion race resurrects"] = (
+                delete_code == append_code == 0 and "remove\n" in deletion_text
+                and "added\n" in deletion_text and "<<<<<<<" not in deletion_text
+                and clean_stash(delete_a) and clean_stash(delete_b))
+
+            absolute = root / "absolute"
+            raw(root, "clone", str(remote), str(absolute))
+            raw(absolute, "config", "user.email", "absolute@example.com")
+            raw(absolute, "config", "user.name", "Absolute")
+            alias = root / "absolute-link"
+            alias.symlink_to(absolute, target_is_directory=True)
+            write(absolute, "absolute.txt", "absolute\n")
+            commit_mod.REPO_DIR = absolute
+            code, _, _ = invoke(["-m", "absolute path", str(alias / "absolute.txt")])
+            results["absolute symlink path commits"] = (
+                code == 0 and raw(absolute, "ls-files", "--", "absolute.txt").stdout.strip()
+                == "absolute.txt" and clean_stash(absolute))
+
             nested = root / "nested"; raw(root, "init", str(nested))
             raw(nested, "config", "user.email", "public@example.com")
             raw(nested, "config", "user.name", "Public")
             write(nested, ".gitignore", ".private/\nmemory/\nplans/\nagents/*\n")
+            write(nested, ".gitattributes",
+                  (Path(__file__).resolve().parents[2] / ".gitattributes").read_text())
             write(nested, "public.txt", "public\n")
-            raw(nested, "add", "--", ".gitignore", "public.txt")
+            raw(nested, "add", "--", ".gitattributes", ".gitignore", "public.txt")
             raw(nested, "commit", "-m", "public base")
             commit_mod.REPO_DIR = nested
             (nested / "memory").mkdir(); write(nested, "memory/refused.txt", "refused\n")
@@ -196,6 +273,9 @@ def run(commit_mod):
                 == "plans/routed.txt"
                 and overlay(private_git, nested, "ls-files", "--", "agents/routed.txt").stdout.strip()
                 == "agents/routed.txt"
+                and overlay(private_git, nested, "check-attr", "merge", "--",
+                            "memory/base.txt").stdout.strip()
+                == "memory/base.txt: merge: union"
                 and not raw(nested, "ls-files", "--", "memory/routed.txt").stdout.strip())
 
             for label, expected in cases.COMMIT_SCENARIOS:

@@ -1,7 +1,6 @@
 """Commit and synchronize named shared-checkout paths under one git lock."""
 
 import argparse
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -42,12 +41,12 @@ def _need(proc, args):
 
 
 def _paths(raw_paths):
-    root = Path(os.path.abspath(str(REPO_DIR)))
+    root = Path(REPO_DIR).resolve()
     paths = []
     for raw in raw_paths:
         path = Path(raw) if Path(raw).is_absolute() else root / raw
         try:
-            paths.append(str(Path(os.path.abspath(str(path))).relative_to(root)))
+            paths.append(str(path.resolve().relative_to(root)))
         except ValueError:
             raise RitualError("path outside REPO_DIR: %s" % raw)
     return paths

@@ -318,6 +318,10 @@ COMMIT_SCENARIOS = [
     ("pull non-ff no-ops", True),
     ("killed holder frees lock", True),
     ("concurrent commits serialize", True),
+    ("concurrent memory appends union", True),
+    ("same-line memory edits stack", True),
+    ("memory deletion race resurrects", True),
+    ("absolute symlink path commits", True),
     ("missing private repo refuses personal path", True),
     ("personal paths route to private overlay", True),
 ]
@@ -824,6 +828,7 @@ PROMPT_CONTAINS = [
     ("PROVIDER_FRAME", "canonical memory snapshot is advisory"),
     ("MEMORY_FRAME", "Canonical persona memory root"),
     ("MEMORY_FRAME", "Use only this persona directory"),
+    ("MEMORY_FRAME", "Write memory only through this absolute root"),
     ("MEMORY_TRUNCATION_NOTE", "memory truncated"),
     ("STATE_BLOCK", "already fetched"),
     ("OPERATOR_BRIEF", "{state}"),
@@ -890,14 +895,18 @@ MEMORY_FRAMES = [
         "Canonical persona memory root: /tmp/memory\n"
         "Hot index snapshot: /tmp/memory/bob/MEMORY.md\n"
         "Use only this persona directory for durable judgment. Fetch current state fresh and read "
-        "linked topic files only when needed.\n\nhot\n",
+        "linked topic files only when needed.\n"
+        "Write memory only through this absolute root; a relative memory/ path in a worktree is "
+        "lost with the tree.\n\nhot\n",
     ),
     (
         ("/tmp/memory", "/tmp/memory/bob/MEMORY.md", "hot", True, 200, 25600),
         "Canonical persona memory root: /tmp/memory\n"
         "Hot index snapshot: /tmp/memory/bob/MEMORY.md\n"
         "Use only this persona directory for durable judgment. Fetch current state fresh and read "
-        "linked topic files only when needed.\n\nhot\n"
+        "linked topic files only when needed.\n"
+        "Write memory only through this absolute root; a relative memory/ path in a worktree is "
+        "lost with the tree.\n\nhot\n"
         "[memory truncated: loaded at most 200 lines or 25600 bytes from "
         "/tmp/memory/bob/MEMORY.md; read the file directly for the rest]",
     ),

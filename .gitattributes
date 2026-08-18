@@ -1,4 +1,5 @@
 memory export-ignore
+memory/** merge=union
 plans export-ignore
 STATE.md export-ignore
 scripts/sweep-login.sh export-ignore

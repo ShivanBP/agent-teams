@@ -96,7 +96,9 @@ MEMORY_FRAME = (
     "Canonical persona memory root: {root}\n"
     "Hot index snapshot: {path}\n"
     "Use only this persona directory for durable judgment. Fetch current state fresh and read "
-    "linked topic files only when needed.\n\n{content}"
+    "linked topic files only when needed.\n"
+    "Write memory only through this absolute root; a relative memory/ path in a worktree is "
+    "lost with the tree.\n\n{content}"
 )
 
 MEMORY_TRUNCATION_NOTE = (

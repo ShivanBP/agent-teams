@@ -16,8 +16,8 @@ capabilities.
 Personal content lives only in `memory/`, `plans/`, `agents/`, and gitignored config.
 Machinery stays generic. No user-specific absolute home paths outside home-derived defaults.
 
-Persona memory lives only under `memory/<persona>/`; write durable judgment only and fetch
-current state fresh.
+Persona memory lives only under `memory/<persona>/` by absolute path; write durable judgment
+only and fetch current state fresh.
 
 Wakes: a mention wakes a persona; the record it sees is a delta since its lane's last wake;
 a topic is an open session, resolving it ends the session, reopening starts fresh; status

@@ -92,6 +92,8 @@ instructions keep the rule itself.
 
 ## Bounds
 
+One consolidation per persona at a time; union resurrects deletions raced by another lane.
+
 Run in a topic with no build worktree, so the commits land on main. A kick in a topic where a
 builder already worked joins that `build/<slug>` tree (`WORKTREE_JOIN` in `constants.py`), and
 memory history written there sits on a branch nobody lands.

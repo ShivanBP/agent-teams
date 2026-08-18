@@ -212,7 +212,7 @@ def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=No
     return rendered
 
 
-def sweep_once(as_name=constants.OPERATOR_IDENTITY, streams_fn=None, stream_id_fn=None,
+def sweep_once(as_name=constants.BRIDGE_IDENTITY, streams_fn=None, stream_id_fn=None,
                topics_fn=None, load_fn=None, refresh_fn=None):
     streams_fn = streams_fn or api.visible_streams
     stream_id_fn = stream_id_fn or api.stream_id

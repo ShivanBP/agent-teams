@@ -258,8 +258,8 @@ OPERATOR_CONTINUATION_FAILED = (
     "Operator continuation failed: {reason}. Tag the bridge again to retry."
 )
 
-OPERATOR_REPLY_FAILED = (
-    "Operator reply failed: {reason}. Tag the bridge again to retry."
+BRIDGE_REPLY_FAILED = (
+    "Bridge reply failed: {reason}. Tag the bridge again to retry."
 )
 
 # Pre-fetched ledger facts, so an estate question costs the seat no tool calls. Facts only: if a
@@ -329,7 +329,7 @@ OPERATOR_BRIEF = (
 
 REPLY_TRUNCATION_NOTE = "\n[reply truncated: showing the first {limit} of {total} characters]"
 
-OPERATOR_REPLY_BRIEF = (
+BRIDGE_BRIEF = (
     "You are Bridge's Zulip seat. The operator tagged you (message {message_id}) in this topic. "
     "That message is the one instruction; carry it out and reply in this topic with the result.\n\n"
     "The message: {message}\n"

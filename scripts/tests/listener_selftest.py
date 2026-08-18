@@ -241,7 +241,7 @@ def _body():
         api.load, api.request = saved[7:9]
 
     for label, got, expected in receipts:
-        want = [(constants.OPERATOR_IDENTITY, 2, constants.EMOJI_RECEIPT)] * expected
+        want = [(constants.BRIDGE_IDENTITY, 2, constants.EMOJI_RECEIPT)] * expected
         if got == want:
             passed += 1
         else:
@@ -265,13 +265,13 @@ def _body():
             print("FAIL %s brief lacks %r" % (label, substring))
 
     expected_failure_posts = [
-        (constants.OPERATOR_IDENTITY, "c", "t",
+        (constants.BRIDGE_IDENTITY, "c", "t",
          prompts.OPERATOR_CONTINUATION_FAILED.format(reason="529 Overloaded"), ""),
-        (constants.OPERATOR_IDENTITY, "c", "t",
-         prompts.OPERATOR_REPLY_FAILED.format(reason="529 Overloaded"), ""),
+        (constants.BRIDGE_IDENTITY, "c", "t",
+         prompts.BRIDGE_REPLY_FAILED.format(reason="529 Overloaded"), ""),
     ]
     if (failure_posts == expected_failure_posts and
-            location_requests == [(constants.OPERATOR_IDENTITY, "GET", "/api/v1/messages/2")]):
+            location_requests == [(constants.BRIDGE_IDENTITY, "GET", "/api/v1/messages/2")]):
         passed += 1
     else:
         failed += 1
@@ -290,7 +290,7 @@ def _body():
         send_mod.post = _fail_notice
         api.load = lambda identity: identity
         api.request = lambda *a, **k: {"result": "error"}
-        _post_operator_failure(prompts.OPERATOR_REPLY_FAILED, RuntimeError("first\nsecond"),
+        _post_operator_failure(prompts.BRIDGE_REPLY_FAILED, RuntimeError("first\nsecond"),
                                "c", "t", 9)
         _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, SystemExit(), "c", "t")
     finally:

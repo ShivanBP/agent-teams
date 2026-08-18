@@ -64,7 +64,7 @@ def model_command(prompt):
 def _record_cost(envelope, lane, cost_fn):
     usage = envelope.get("usage") or {}
     row = {
-        "persona": constants.OPERATOR_IDENTITY,
+        "persona": constants.BRIDGE_IDENTITY,
         "lane": lane,
         "usd": float(envelope.get("total_cost_usd") or 0.0),
         "turns": int(envelope.get("num_turns") or 0),

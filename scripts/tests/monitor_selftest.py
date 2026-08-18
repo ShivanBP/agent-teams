@@ -200,8 +200,8 @@ def _body():
         digests=True, sweep_fn=lambda as_name: sweeps.append(as_name), update_fn=update_stub)
     board_refresh = refresh_board(update_fn=update_stub)
     if refreshes == [(("bridge", 7, "setup", "Build board"), {"force": True})] \
-            and sweeps == [constants.OPERATOR_IDENTITY] \
-            and board_refreshes == [{"as_name": constants.OPERATOR_IDENTITY}] * 3 \
+            and sweeps == [constants.BRIDGE_IDENTITY] \
+            and board_refreshes == [{"as_name": constants.BRIDGE_IDENTITY}] * 3 \
             and single_refresh == digest_refresh == board_refresh == {"activity": (99, False)}:
         passed += 1
     else:
@@ -239,8 +239,8 @@ def _body():
                            "board-workshop": {"message_id": 100},
                            "board-domains": {"message_id": 101}} \
             and len(posts) == 3 \
-            and updates == [(constants.OPERATOR_IDENTITY, 99, "two"),
-                            (constants.OPERATOR_IDENTITY, 99, "activity")]:
+            and updates == [(constants.BRIDGE_IDENTITY, 99, "two"),
+                            (constants.BRIDGE_IDENTITY, 99, "activity")]:
         passed += 1
     else:
         failed += 1

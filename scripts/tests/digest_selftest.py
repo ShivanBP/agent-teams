@@ -197,7 +197,7 @@ def _body():
         load_fn=lambda name: cases.DIGEST_SWEEP_STATE if name == "digests" else {},
         refresh_fn=lambda *args: calls.append(args))
     if swept == cases.DIGEST_SWEEP_EXPECTED and calls == [
-            (constants.OPERATOR_IDENTITY, 7, "setup", "dirty")]:
+            (constants.BRIDGE_IDENTITY, 7, "setup", "dirty")]:
         passed += 1
     else:
         failed += 1

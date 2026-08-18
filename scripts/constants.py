@@ -178,7 +178,7 @@ AGENT_TEAM_MATE_EMAIL = os.environ.get("AGENT_TEAM_MATE_EMAIL", "")
 AGENT_TEAM_MATE_EMAILS = _mate_emails(
     os.environ.get("AGENT_TEAM_MATE_EMAILS"), AGENT_TEAM_MATE_EMAIL)
 
-OPERATOR_IDENTITY = os.environ.get("OPERATOR_IDENTITY", "bridge")
+BRIDGE_IDENTITY = os.environ.get("BRIDGE_IDENTITY", "bridge")
 LAUNCHD_LABEL = os.environ.get("AGENT_TEAM_LAUNCHD_LABEL", "com.agent-team")
 EMOJI_RECEIPT = os.environ.get("EMOJI_RECEIPT", "eyes")
 ALERTS_TOPIC = os.environ.get("ALERTS_TOPIC", "alerts")

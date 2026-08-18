@@ -39,7 +39,7 @@ the week after it is written, and it did.
 
 Group findings by invariant, worst first, each with a path and one line saying what breaks.
 Separate the two kinds explicitly: a violation of a stated rule, and a place where the rule
-itself no longer fits what the code does. The second kind is a proposal for Mate, not a
+itself no longer fits what the code does. The second kind is a proposal for the operator, not a
 defect, and mixing them makes the report unusable.
 
 Close with the one finding you would fix first if you could fix only one.

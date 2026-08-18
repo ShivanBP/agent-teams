@@ -1,7 +1,7 @@
 """The daemon: eight identities, one thread each, wakes only. Phase 3 grows the operator rails on
 top of this file: Rail A continues an open loop after a persona's wake lands (handle_rail_a),
-Rail B answers a direct tag of the "bridge" identity from Mate (handle_operator_tag), and a
-background thread pauses loops behind inflight rows that stalled (stall_sweep_thread).
+Rail B answers a direct tag of the "bridge" identity from the operator (handle_operator_tag),
+and a background thread pauses loops behind inflight rows that stalled (stall_sweep_thread).
 
 The zulip pip library is imported only in this module (amendment 6); everything else in the
 daemon path (store, personas, prompts, runner, loops) stays stdlib.
@@ -121,7 +121,7 @@ def resolve_wake_settings(identity, provider, model, effort, matrix=None):
     else:
         level = defaults["effort"]
     # the generic level travels beside the harness's translation: the footer reports the word
-    # Mate types (low/mid/high/xtra), not the word the CLI takes.
+    # the operator types (low/mid/high/xtra), not the word the CLI takes.
     return run_model, constants.translate_effort(provider, level), level
 
 
@@ -261,7 +261,7 @@ def _resolve_user_ids(identity):
                         resolved_emails.add(email)
                     if mate_email and email == mate_email:
                         mate_id = user.get("user_id")
-                        mention = "@**%s**" % user.get("full_name", "Mate")
+                        mention = "@**%s**" % (user.get("full_name") or email.split("@")[0])
         missing = holder_emails - resolved_emails
         if missing:
             log.error("could not resolve flag-holder emails to user ids: %s",
@@ -276,7 +276,7 @@ def _resolve_user_ids(identity):
 
 
 def mate_user_id(identity=constants.OPERATOR_IDENTITY):
-    """Resolve and cache Mate's Rail B id alongside the flag-holder id set."""
+    """Resolve and cache the operator's Rail B id alongside the flag-holder id set."""
     _resolve_user_ids(identity)
     return _USER_IDS["mate_id"]
 
@@ -288,8 +288,8 @@ def flag_holder_user_ids(identity=constants.OPERATOR_IDENTITY):
 
 
 def mate_mention():
-    """Zulip mentions of Mate are @-mentions of his resolved display name (amendment 3: there is
-    no separate operator bot to tag him from)."""
+    """Zulip mentions of the operator are @-mentions of the resolved display name (amendment 3:
+    there is no separate operator bot to tag from)."""
     mate_user_id()
     return _USER_IDS.get("mention", "")
 
@@ -530,12 +530,12 @@ def handle_rail_a(stream_id, channel, topic, record, reply):
         _close_loop(loop_id, dest_channel, dest_topic, reason)
 
 
-# --- Rail B: Mate tags the operator bot directly -------------------------------------------------
+# --- Rail B: the operator tags the operator bot directly -----------------------------------------
 
 def handle_operator_tag(event, mate_id):
-    """A message event on the operator identity with the mentioned flag: proven Mate by user id,
-    within TAG_MAX_AGE_MIN of the message timestamp, or it is skipped and logged, never answered
-    late and never answered on a bot's say-so."""
+    """A message event on the operator identity with the mentioned flag: proven to be from the
+    operator by user id, within TAG_MAX_AGE_MIN of the message timestamp, or it is skipped and
+    logged, never answered late and never answered on a bot's say-so."""
     msg = event.get("message") or {}
     sender_id = msg.get("sender_id")
     message_id = msg.get("id")
@@ -546,7 +546,7 @@ def handle_operator_tag(event, mate_id):
     ts = msg.get("timestamp")
 
     if mate_id is None or sender_id != mate_id:
-        log.info(prompts.TAG_NOT_MATE.format(sender=sender_id))
+        log.info(prompts.TAG_NOT_OPERATOR.format(sender=sender_id))
         return
     if is_tag_stale(ts, time.time(), constants.TAG_MAX_AGE_MIN):
         log.info(prompts.TAG_STALE.format(sender=sender_id, message_id=message_id, max_age=constants.TAG_MAX_AGE_MIN))

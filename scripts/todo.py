@@ -87,7 +87,8 @@ def model_command(prompt):
     return [
         "claude", "-p", "--model", constants.TODO_SWEEP_MODEL, "--output-format", "json",
         "--tools", "", "--safe-mode", "--disable-slash-commands",
-        "--strict-mcp-config", "--mcp-config", "{}", "--no-session-persistence", prompt,
+        "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+        "--no-session-persistence", prompt,
     ]
 
 
@@ -266,8 +267,10 @@ def _selftest():
     command = model_command("prompt")
     env = _model_env()
     tools_off = command[command.index("--tools") + 1] == ""
+    mcp_config = json.loads(command[command.index("--mcp-config") + 1])
     if all(part in command for part in cases.TODO_COMMAND_CONTAINS) and tools_off \
-            and str(constants.REPO_DIR) not in command and not any("ZULIP" in key for key in env):
+            and mcp_config == {"mcpServers": {}} and str(constants.REPO_DIR) not in command \
+            and not any("ZULIP" in key for key in env):
         passed += 1
     else:
         failed += 1

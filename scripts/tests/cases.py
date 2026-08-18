@@ -1041,6 +1041,16 @@ BUDGET_REACHED = [
     (0, 0, True),
 ]
 
+# (label, persona, --as name, AGENT_TEAM_IDENTITY, header resolves) for loops.fire_kick, every
+# row a refusal. Each asserts the kicks count is unchanged: before the pre-flight reorder the
+# ledger was written first, so all four consumed budget and posted nothing (the phantom kick).
+FIRE_KICK_REFUSALS = [
+    ("unknown persona", "nobody", "bridge", None, True),
+    ("--as a persona", "peter", "bob", None, True),
+    ("identity mismatch", "peter", "bridge", "bob", True),
+    ("header unresolvable", "peter", "bridge", None, False),
+]
+
 # (operator reply text, expected parsed decision or None) for listener.parse_operator_decision
 OPERATOR_DECISIONS = [
     ("KICK: peter build the thing", ("kick", "peter", "build the thing")),

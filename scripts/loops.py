@@ -158,6 +158,36 @@ def loop_for_lane(as_name, stream_id, topic, state_name=STATE_NAME):
 
 # --- CLI -----------------------------------------------------------------------------------------
 
+def fire_kick(loop_id, persona, body, as_name, refuse, state_name=STATE_NAME):
+    """The opener's verb for kick one. Every check runs before the ledger write, so a refusal
+    never leaves a kick that consumed budget without posting; the invariant survives, the row
+    still lands before the post, just never before nothing. `refuse` exits (argparse's error)."""
+    import personas
+    import prompts
+    import send as send_mod
+
+    row = get(loop_id, state_name)
+    if row is None or row.get("status") != STATUS_OPEN:
+        refuse("no open loop: %s" % loop_id)
+    if persona not in personas.PERSONAS:
+        refuse("unknown persona: %s" % persona)
+    if as_name in personas.PERSONAS:
+        # a persona-authored kick posts a mention strip_persona_mentions neutralizes: it would
+        # record a kick that wakes nobody. Kicks post as bridge.
+        refuse("kicks post as bridge, not as %s" % as_name)
+    api.enforce_identity(as_name)
+    stream_id, topic, _content = resolve_header(as_name, row["header_id"])
+    if topic is None:
+        refuse("header %s did not resolve; no kick recorded" % row["header_id"])
+
+    n = kick_record(loop_id, persona=persona, state_name=state_name)
+    if not n:
+        refuse("budget reached for loop %s; no kick recorded" % loop_id)
+    mention = prompts.MENTION.format(name=personas.display_name(persona), body=body)
+    mid = send_mod.post(as_name, stream_id, topic, prompts.kick_body(mention, n, row["budget"]))
+    return {"kick": n, "budget": row["budget"], "message_id": mid}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
@@ -195,23 +225,7 @@ def main():
             ap.error("no such loop: %s" % args.id)
         print(json.dumps(row, indent=2))
     elif args.cmd == "kick":
-        # The opener's verb for kick one: the ledger row lands before the kick posts, same
-        # order Rail A follows, so the thread and the ledger can never disagree on the count.
-        row = get(args.id)
-        if row is None or row.get("status") != STATUS_OPEN:
-            ap.error("no open loop: %s" % args.id)
-        n = kick_record(args.id, persona=args.persona)
-        if not n:
-            ap.error("budget reached for loop %s; no kick recorded" % args.id)
-        import prompts
-        import send as send_mod
-        stream_id, topic, _content = resolve_header(args.as_name, row["header_id"])
-        if topic is None:
-            ap.error("header %s did not resolve; kick recorded as %d but NOT posted; post by hand" % (row["header_id"], n))
-        import personas
-        body = prompts.MENTION.format(name=personas.display_name(args.persona), body=args.body)
-        mid = send_mod.post(args.as_name, stream_id, topic, prompts.kick_body(body, n, row["budget"]))
-        print(json.dumps({"kick": n, "budget": row["budget"], "message_id": mid}, indent=2))
+        print(json.dumps(fire_kick(args.id, args.persona, args.body, args.as_name, ap.error), indent=2))
     elif args.cmd == "list":
         rows = list(all_rows().values())
         if not args.all:

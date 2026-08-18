@@ -55,10 +55,10 @@ def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=None):
 
 
 def _build_cmd(persona, model, session, effort, prompt="hi"):
-    """claude -p --agent <persona> [--model M] [--resume SID] --effort E --output-format json."""
+    """claude -p --agent <persona> with realtime JSON events and one terminal result."""
     # headless has nobody to approve, and an untrusted cwd (a build worktree) fences Bash off
     cmd = ["claude", "-p", "--dangerously-skip-permissions",
-           "--output-format", "json", "--agent", persona]
+           "--output-format", "stream-json", "--verbose", "--agent", persona]
     if model:
         cmd += ["--model", model]
     if session:
@@ -81,6 +81,22 @@ def _parse(payload):
         "input_tokens": usage.get("input_tokens", 0),
     }
     return reply, session_id, cost_usd, turns, usage_out
+
+
+def _parse_claude_stream(output):
+    terminal = None
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("type") == "result":
+            terminal = event
+    if terminal is None:
+        raise RuntimeError("claude stream returned no terminal result event")
+    if terminal.get("is_error") or terminal.get("subtype") != "success":
+        raise RuntimeError("claude stream failed: %s" % terminal.get("result", terminal))
+    return _parse(terminal)
 
 
 def _build_cmd_codex(model, session, effort, output_path, prompt="hi"):
@@ -258,31 +274,26 @@ def _wake_identity(persona, identity):
     return identity or persona
 
 
-def _run_claude(persona, prompt, *, model, effort, session, cwd, timeout, identity):
+def _run_claude(persona, prompt, *, model, effort, session, cwd, timeout, identity,
+                wake_log=None):
     run_prompt = _run_prompt("claude", persona, prompt, session, identity)
     cmd = _build_cmd(persona, model, session, effort, run_prompt)
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     env["CLAUDE_CODE_DISABLE_TERMINAL_TITLE"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd or REPO_DIR),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    proc, stdout = _run_jsonl(
+        cmd, cwd=Path(cwd or REPO_DIR).resolve(), env=env, timeout=timeout,
+        wake_log=wake_log)
     if proc.returncode != 0:
         raise RuntimeError(
             "claude -p failed (exit %d) for persona %s: %s" %
-            (proc.returncode, persona, _failure_output(proc.stderr, proc.stdout))
+            (proc.returncode, persona, _failure_output(proc.stderr, stdout))
         )
     try:
-        payload = json.loads(proc.stdout)
-    except ValueError:
-        raise RuntimeError("claude -p returned non-JSON stdout for persona %s: %s" % (persona, proc.stdout[:2000]))
-    reply, session_id, cost_usd, turns, usage = _parse(payload)
+        reply, session_id, cost_usd, turns, usage = _parse_claude_stream(stdout)
+    except (RuntimeError, ValueError) as exc:
+        raise RuntimeError("claude -p returned a bad stream for persona %s: %s" % (persona, exc))
     return Result(reply=reply, session_id=session_id, cost_usd=cost_usd, turns=turns,
                   usage=usage, provider="claude")
 
@@ -528,7 +539,8 @@ def run(persona, prompt, *, provider, model=None, effort=None, session=None, cwd
         timeout=constants.RUN_TIMEOUT, identity=None, lane=None):
     if provider == "claude":
         return _run_claude(persona, prompt, model=model, effort=effort, session=session,
-                           cwd=cwd, timeout=timeout, identity=identity)
+                           cwd=cwd, timeout=timeout, identity=identity,
+                           wake_log=_wake_log_path(lane) if lane is not None else None)
     # codex and agy spell both flags unconditionally, so a hand-driven run that omits either one
     # hands subprocess a None. The harness defaults stand in; their effort is a fleet word
     # (low/mid/high/xtra) and reaches the CLI translated, as a listener wake's already does.
@@ -588,6 +600,17 @@ def _selftest():
         else:
             failed += 1
             print("FAIL _parse(%r) -> %r wanted %r" % (payload, got, expected))
+
+    for output, expected in cases.CLAUDE_STREAM_PARSES:
+        try:
+            got = _parse_claude_stream(output)
+        except RuntimeError as exc:
+            got = type(exc)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _parse_claude_stream(...) -> %r wanted %r" % (got, expected))
 
     for model, session, effort, output_path, expected in cases.CODEX_RUNNER_CMDS:
         got = _build_cmd_codex(model, session, effort, output_path, "hi")
@@ -750,8 +773,9 @@ def _selftest():
             captured.update(kwargs["env"])
             return subprocess.CompletedProcess(
                 args[0], 0, stdout=(
-                    '{"result":"ok","session_id":"session","total_cost_usd":0,'
-                    '"num_turns":1}'), stderr="")
+                    '{"type":"result","subtype":"success","is_error":false,'
+                    '"result":"ok","session_id":"session","total_cost_usd":0,'
+                    '"num_turns":1}\n'), stderr="")
 
         original_run = subprocess.run
         try:
@@ -776,6 +800,20 @@ def _selftest():
             failed += 1
             print("FAIL Claude env from %r -> %r wanted %r" %
                   (inherited, got, expected))
+
+    claude_logs = []
+    old_claude = _run_claude
+    try:
+        globals()["_run_claude"] = lambda *a, **kw: claude_logs.append(kw.get("wake_log"))
+        run("bob", "hi", provider="claude", lane=cases.CLAUDE_LOG_LANE)
+    finally:
+        globals()["_run_claude"] = old_claude
+    expected_log = _wake_log_path(cases.CLAUDE_LOG_LANE)
+    if claude_logs == [expected_log]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL Claude run lane log -> %r wanted %r" % (claude_logs, expected_log))
 
     for stream_id, topic, expected in cases.WAKE_SLUGS:
         got = wake_slug(stream_id, topic)

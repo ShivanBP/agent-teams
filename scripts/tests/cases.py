@@ -172,17 +172,17 @@ FAILURE_OUTPUTS = [
 RUNNER_CMDS = [
     ("peter", None, None, None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "json", "--agent", "peter", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "peter", "hi"]),
     ("bob", "sonnet", None, None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "json", "--agent", "bob", "--model", "sonnet", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "bob", "--model", "sonnet", "hi"]),
     ("archie", "fable", "sid-123", "high",
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "json", "--agent", "archie",
+      "--output-format", "stream-json", "--verbose", "--agent", "archie",
       "--model", "fable", "--resume", "sid-123", "--effort", "high", "hi"]),
     ("eve", None, "sid-9", None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "json", "--agent", "eve", "--resume", "sid-9", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "eve", "--resume", "sid-9", "hi"]),
 ]
 
 CODEX_RUNNER_CMDS = [
@@ -814,6 +814,24 @@ RUNNER_PARSES = [
         ("no usage field", "xyz", 0.0, 0, {"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "input_tokens": 0}),
     ),
 ]
+
+CLAUDE_STREAM_PARSES = [
+    (
+        '\n'.join([
+            '{"type":"system","subtype":"init","session_id":"abc"}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"OK"}]}}',
+            '{"type":"result","subtype":"success","is_error":false,"result":"OK",'
+            '"session_id":"abc","total_cost_usd":0.01,"num_turns":1,'
+            '"usage":{"input_tokens":2,"cache_read_input_tokens":3}}',
+        ]),
+        ("OK", "abc", 0.01, 1, {"cache_read_input_tokens": 3,
+                                  "cache_creation_input_tokens": 0, "input_tokens": 2}),
+    ),
+    ('{"type":"assistant","message":{}}', RuntimeError),
+    ('{"type":"result","subtype":"error","is_error":true,"result":"bad"}', RuntimeError),
+]
+
+CLAUDE_LOG_LANE = "7:claude stream:bob"
 
 # Captured from codex-cli 0.144.2 on this Mac, 2026-08-13.
 CODEX_PARSES = [

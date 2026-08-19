@@ -579,13 +579,15 @@ def handle_operator_tag(event, mate_id):
                                                 loop_note=loop_note, message_id=message_id,
                                                 state=prompts.state_block(store.state_summary()))
     try:
-        # agent name and identity are the same word now: AGENT_TEAM_IDENTITY=bridge is what
-        # lets the seat call send.py --as bridge itself.
+        # agent name and identity are the same word: AGENT_TEAM_IDENTITY carrying it is what
+        # lets the seat call send.py --as itself. "bridge" here is the rails.json key, not the
+        # identity, so it stays literal under a BRIDGE_IDENTITY rename.
         rail = constants.rail_defaults("bridge")
-        result = runner.run("bridge", brief, provider=rail["provider"], model=rail["model"],
+        result = runner.run(constants.BRIDGE_IDENTITY, brief, provider=rail["provider"],
+                            model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
                             identity=constants.BRIDGE_IDENTITY)
-        _append_cost("bridge", topic, result, rail["model"], rail["effort"])
+        _append_cost(constants.BRIDGE_IDENTITY, topic, result, rail["model"], rail["effort"])
         # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
         # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
         # The footer stamps what the runner was told, in the fleet's effort word, same as a wake's.

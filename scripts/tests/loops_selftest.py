@@ -152,6 +152,43 @@ def _body():
             os.environ.pop("AGENT_TEAM_IDENTITY", None)
             if saved_identity is not None:
                 os.environ["AGENT_TEAM_IDENTITY"] = saved_identity
+        # the kick default and the refusal both follow BRIDGE_IDENTITY: main() is driven for real
+        # with fire_kick stubbed, so a default that parses but never reaches the call fails here.
+        saved_bridge = constants.BRIDGE_IDENTITY
+        try:
+            for identity, argv, expected in cases.KICK_AS_DEFAULTS:
+                constants.BRIDGE_IDENTITY = identity
+                seen = []
+                saved = (sys.argv, globals()["fire_kick"], sys.stdout)
+                try:
+                    sys.argv = ["loops.py"] + argv
+                    globals()["fire_kick"] = lambda *a, **k: seen.append(a[3]) or {}
+                    sys.stdout = io.StringIO()
+                    main()
+                finally:
+                    sys.argv, globals()["fire_kick"], sys.stdout = saved
+                got = seen[0] if seen else "fire_kick never called"
+                if got == expected:
+                    passed += 1
+                else:
+                    failed += 1
+                    print("FAIL kick --as default under BRIDGE_IDENTITY=%r -> %r wanted %r"
+                          % (identity, got, expected))
+
+            constants.BRIDGE_IDENTITY = "courier"
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    fire_kick(row3["id"], "peter", "body", "bob", _refuse, state_name=test_state)
+                note = ""
+            except _Refused as exc:
+                note = str(exc)
+            if "courier" in note and "bridge" not in note:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL renamed-seat kick refusal -> %r" % note)
+        finally:
+            constants.BRIDGE_IDENTITY = saved_bridge
     finally:
         if test_path.is_file():
             test_path.unlink()

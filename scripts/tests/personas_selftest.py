@@ -38,6 +38,23 @@ def _body():
         else:
             failed += 1
             print("FAIL %s -> names=%r errors=%r" % (label, names, errors))
+    saved_identity = constants.BRIDGE_IDENTITY
+    try:
+        for label, identity, rows, expected_names in cases.PERSONA_SCAN_RENAMED:
+            constants.BRIDGE_IDENTITY = identity
+            with tempfile.TemporaryDirectory() as root:
+                directory = Path(root)
+                for name, body in rows:
+                    (directory / name).write_text(body)
+                names, _errors = _scan(directory)
+            if names == expected_names:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL %s -> names=%r wanted %r" % (label, names, expected_names))
+    finally:
+        constants.BRIDGE_IDENTITY = saved_identity
+
     example = json.loads(constants.MATRIX_EXAMPLE_PATH.read_text())
     names = load_display_names(example)
     if names == cases.PERSONA_DISPLAY_MAP:

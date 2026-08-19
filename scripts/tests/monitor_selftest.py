@@ -203,7 +203,7 @@ def _body():
     digest_refresh = refresh_board(
         digests=True, sweep_fn=lambda as_name: sweeps.append(as_name), update_fn=update_stub)
     board_refresh = refresh_board(update_fn=update_stub)
-    if refreshes == [(("bridge", 7, "setup", "Build board"), {"force": True})] \
+    if refreshes == [((constants.BRIDGE_IDENTITY, 7, "setup", "Build board"), {"force": True})] \
             and sweeps == [constants.BRIDGE_IDENTITY] \
             and board_refreshes == [{"as_name": constants.BRIDGE_IDENTITY}] * 3 \
             and single_refresh == digest_refresh == board_refresh == {"activity": (99, False)}:

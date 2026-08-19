@@ -219,7 +219,7 @@ def board_message(as_name, channel, topic, body, message_id=None):
 def verb_allowed(as_name):
     """--resolve and --move-to are bridge-only (the topic-verbs ledger grant); every other
     identity is refused before any API call, regardless of AGENT_TEAM_IDENTITY."""
-    return as_name == "bridge"
+    return as_name == constants.BRIDGE_IDENTITY
 
 
 def _topic_anchor_message(as_name, channel, topic):

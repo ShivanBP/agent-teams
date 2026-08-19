@@ -128,7 +128,9 @@ def resolve_wake_settings(identity, provider, model, effort, matrix=None):
 def parse_operator_decision(text):
     """Finds the operator's single decision line ('KICK: <persona> <body>' or 'CLOSE: <reason>')
     amid any prose; zero or more than one decision line parses to None so a malformed or
-    ambiguous answer never gets read as a kick (never-forge-a-kick, invariant)."""
+    ambiguous answer never gets read as a kick (never-forge-a-kick, invariant). The persona
+    name is lowercased here: the roster keys are lowercase and a continuation that writes the
+    display spelling ('Writer') otherwise falls off the roster check and drops the loop."""
     lines = [l.strip() for l in (text or "").strip().splitlines() if l.strip()]
     decisions = [l for l in lines if l.startswith("KICK:") or l.startswith("CLOSE:")]
     if len(decisions) != 1:
@@ -138,7 +140,7 @@ def parse_operator_decision(text):
         rest = line[len("KICK:"):].strip()
         parts = rest.split(None, 1)
         if len(parts) == 2 and parts[0]:
-            return ("kick", parts[0], parts[1])
+            return ("kick", parts[0].lower(), parts[1])
         return None
     if line.startswith("CLOSE:"):
         reason = line[len("CLOSE:"):].strip()

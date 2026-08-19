@@ -266,7 +266,12 @@ TAG_NOT_OPERATOR = (
     "Refused: an operator tag from sender {sender}, not the operator, was ignored."
 )
 
-WAKE_FAILED_NOTE = "[wake failed; see ~/.config/agent-team/logs]"
+WAKE_FAILED_NOTE = "[wake failed: {reason}; see ~/.config/agent-team/logs]"
+
+PROVIDER_BIN_MISSING = (
+    "{provider} CLI not found at {binary}, so persona {persona} cannot wake: install it, or "
+    "set {env} to its path"
+)
 
 # --- operator rails (Phase 3): loop continuation and the operator's direct tag -----------------
 

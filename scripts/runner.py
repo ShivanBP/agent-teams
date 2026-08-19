@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,9 @@ import store
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 PERSONA_DIR = REPO_DIR / "agents"
+# provider -> the constants name holding its binary, which is also the env override that sets it
+PROVIDER_BIN = {"claude": "CLAUDE_BIN", "codex": "CODEX_BIN",
+                "agy": "AGY_BIN", "opencode": "OPENCODE_BIN"}
 log = logging.getLogger("agent-team.runner")
 
 @dataclass
@@ -108,7 +112,7 @@ def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=subprocess.DEVNULL,
 def _build_cmd(persona, model, session, effort, prompt="hi"):
     """claude -p --agent <persona> with realtime JSON events and one terminal result."""
     # headless has nobody to approve, and an untrusted cwd (a build worktree) fences Bash off
-    cmd = ["claude", "-p", "--dangerously-skip-permissions",
+    cmd = [constants.CLAUDE_BIN, "-p", "--dangerously-skip-permissions",
            "--output-format", "stream-json", "--verbose", "--agent", persona]
     if model:
         cmd += ["--model", model]
@@ -592,8 +596,22 @@ def wake_cwd(identity, stream_id, topic):
     return path, _refresh_worktree(path)
 
 
+def check_binary(provider, persona):
+    """Refuse before the spawn: subprocess raises a bare FileNotFoundError that names neither the
+    provider, the persona, nor the override that fixes it. An unknown provider falls through to
+    run()'s own error."""
+    name = PROVIDER_BIN.get(provider)
+    if name is None:
+        return
+    binary = getattr(constants, name)
+    if shutil.which(binary) is None:
+        raise RuntimeError(prompts.PROVIDER_BIN_MISSING.format(
+            provider=provider, binary=binary, persona=persona, env=name))
+
+
 def run(persona, prompt, *, provider, model=None, effort=None, session=None, cwd=None,
         timeout=constants.RUN_TIMEOUT, identity=None, lane=None):
+    check_binary(provider, persona)
     if provider == "claude":
         return _run_claude(persona, prompt, model=model, effort=effort, session=session,
                            cwd=cwd, timeout=timeout, identity=identity,

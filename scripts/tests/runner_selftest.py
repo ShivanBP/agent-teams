@@ -471,6 +471,47 @@ def _body():
             failed += 1
             print("FAIL _wake_identity(%r, %r) -> %r wanted %r" % (persona, identity, got, expected))
 
+    # check_binary against patched constants, so no CLI has to be installed to prove the refusal.
+    for provider, binary, needles in cases.PROVIDER_BIN_CHECKS:
+        name = PROVIDER_BIN.get(provider)
+        saved = getattr(constants, name) if name and binary is not None else None
+        if name and binary is not None:
+            setattr(constants, name, binary)
+        try:
+            check_binary(provider, "peter")
+            note = None
+        except RuntimeError as exc:
+            note = str(exc)
+        finally:
+            if name and binary is not None:
+                setattr(constants, name, saved)
+        ok = all(part in (note or "") for part in needles) if needles else note is None
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL check_binary(%r, %r) -> %r wanted %r" % (provider, binary, note, needles))
+
+    # run() drives the check before any spawn: subprocess.run stubbed, so a missed check would
+    # show up as a recorded call instead of a refusal.
+    spawns = []
+    saved_bin, saved_spawn = constants.CLAUDE_BIN, subprocess.run
+    try:
+        constants.CLAUDE_BIN = "/nonexistent/claude"
+        subprocess.run = lambda *a, **k: spawns.append(a) or None
+        try:
+            run("peter", "hi", provider="claude")
+            note = None
+        except RuntimeError as exc:
+            note = str(exc)
+    finally:
+        constants.CLAUDE_BIN, subprocess.run = saved_bin, saved_spawn
+    if note and "/nonexistent/claude" in note and not spawns:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL run() past a missing binary -> note=%r spawns=%d" % (note, len(spawns)))
+
     # main() driven for real with run() stubbed: a flag that parses but never reaches run() fails here.
     import io
 

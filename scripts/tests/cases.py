@@ -127,6 +127,32 @@ VERB_GATE = [
     ("", False),
 ]
 
+# (provider, binary to stand in for the provider's constant, expected needles in the refusal) for
+# runner.check_binary. An empty needle list means no refusal; a None binary patches nothing, which
+# is how the unknown-provider fall-through is driven.
+PROVIDER_BIN_CHECKS = [
+    ("claude", "/nonexistent/claude",
+     ["/nonexistent/claude", "claude", "peter", "CLAUDE_BIN"]),
+    ("codex", "/nonexistent/codex",
+     ["/nonexistent/codex", "codex", "peter", "CODEX_BIN"]),
+    ("agy", "/nonexistent/agy",
+     ["/nonexistent/agy", "agy", "peter", "AGY_BIN"]),
+    ("opencode", "/nonexistent/opencode",
+     ["/nonexistent/opencode", "opencode", "peter", "OPENCODE_BIN"]),
+    ("claude", "/bin/sh", []),
+    ("claude", "sh", []),
+    ("nosuch", None, []),
+]
+
+# (exception, expected posted reason) for listener._failure_reason: one line, class name if empty.
+FAILURE_REASONS = [
+    (RuntimeError("codex CLI not found at /nonexistent/codex"),
+     "codex CLI not found at /nonexistent/codex"),
+    (RuntimeError("two\nlines  and   spaces"), "two lines and spaces"),
+    (RuntimeError(""), "RuntimeError"),
+    (KeyError(), "KeyError"),
+]
+
 # (identity, message id, content, expected PATCH content) for send.update
 UPDATES = [
     ("bridge", 123, "board", "board"),
@@ -1299,6 +1325,11 @@ WAKE_HEADER_CONTAINS = [
 # (prompts attribute name, required substring): guards strings whose content no other table
 # asserts, the vacancy behind the TAG_NOT_OPERATOR copy-paste bug
 PROMPT_CONTAINS = [
+    ("WAKE_FAILED_NOTE", "{reason}"),
+    ("PROVIDER_BIN_MISSING", "{provider}"),
+    ("PROVIDER_BIN_MISSING", "{binary}"),
+    ("PROVIDER_BIN_MISSING", "{persona}"),
+    ("PROVIDER_BIN_MISSING", "{env}"),
     ("RECORD_LINE", "{stamp}"),
     ("RECORD_LINE", "{sender}"),
     ("RECORD_LINE", "{body}"),

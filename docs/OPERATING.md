@@ -115,6 +115,28 @@ identity nor the channel nor the topic, only the body, and the channel must alre
 in `config/domains.json`. The blast radius is one message in one never-resolved status topic.
 In code the grant is `enforce=False`, passed from `send.board_message` and nowhere else.
 
+## Domain map
+
+`config/domains.json` maps a channel name to the repo its wakes work against. A wake in a mapped
+channel gets one extra header line naming that root and saying its CLAUDE.md and `skills/` apply,
+read by path: nothing loads them for the session. The file is gitignored, its tracked
+`.example.json` ships empty, and every value is an absolute path.
+
+Mapping is by exact channel name, so a domain with several channels lists each one, all pointing
+at the same root. Jobfinder maps `jobfinder`, `jobfinder-status` and `jobfinder-setup` to
+`~/Projects/jobfinder`.
+
+A domain's board lives in its own status channel by convention, `#<channel>-status > board`,
+never in the shared `#status`, which carries the fleet's own board. The destination is derived,
+never an argument: a board that can be aimed ends up in two places. `monitor.py board CHANNEL`
+refuses loudly when that status channel does not exist, and the domain's `board.json` records
+which channel and topic it was posted to, so moving the convention reposts rather than editing
+the message it left behind.
+
+Channels also group in `config/channels.json`, one group per heading on the fleet board. A
+domain's channels belong in their own group. Adding a group is a config edit only; the board's
+per-section state keys are derived from the group name.
+
 ## Channel descriptions (canonical copy)
 
 Zulip keeps no edit history for a channel description, so the repo holds the canonical text

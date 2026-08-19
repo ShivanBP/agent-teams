@@ -109,8 +109,10 @@ def _body():
     split_parts = board_parts(
         1, cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
         cases.BOARD_RENDER_DIGESTS, now_ts=200000)
+    # against BOARD_SECTIONS, not a literal list: channels.json is gitignored, so a hardcoded
+    # group list is green in CI against the example and red on any estate that added a group
     if combined_parts == {"activity": board} \
-            and list(split_parts) == ["activity", "workshop", "domains"]:
+            and tuple(split_parts) == constants.BOARD_SECTIONS:
         passed += 1
     else:
         failed += 1
@@ -305,7 +307,7 @@ def _body():
               (isolated, repeated, recovered, states, alerts, update_attempts))
 
     # domain_board: the id lives in the domain repo, so each row gets its own throwaway root.
-    for label, channel, root, body, window, state, refusal in cases.DOMAIN_BOARDS:
+    for label, channel, root, body, window, resolves, state, refusal in cases.DOMAIN_BOARDS:
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / constants.DOMAIN_BOARD_STATE
             if state is not None:
@@ -320,22 +322,30 @@ def _body():
             try:
                 log.disabled = True
                 got = domain_board(channel, body, root=(tmp if root else ""),
-                                   window_fn=lambda name: window, board_fn=board_stub)
+                                   window_fn=lambda name: window, board_fn=board_stub,
+                                   stream_id_fn=lambda name, ch: 7 if resolves else None)
                 error = None
             except ValueError as exc:
                 got, error = None, str(exc)
             finally:
                 log.disabled = log_disabled
             written = json.loads(path.read_text()) if path.is_file() else None
+            status = constants.DOMAIN_STATUS_CHANNEL.format(channel=channel)
             if refusal:
                 ok = error is not None and refusal in error and not sent
             else:
-                prior = state.get("message_id") if isinstance(state, dict) else None
+                # only a state file naming this exact destination hands its id over; anything
+                # else posts fresh, or the board would be edited where it no longer belongs
+                here = isinstance(state, dict) and \
+                    (state.get("channel"), state.get("topic")) == (status, constants.BOARD_TOPIC)
+                prior = state.get("message_id") if here else None
                 ok = (error is None and got == ((prior or 55), True)
                       and len(sent) == 1
-                      and sent[0][2] == constants.DOMAIN_BOARD_TOPIC.format(channel=channel)
+                      and sent[0][1] == status
+                      and sent[0][2] == constants.BOARD_TOPIC
                       and sent[0][4] == prior
-                      and written == {"message_id": prior or 55})
+                      and written == {"channel": status, "topic": constants.BOARD_TOPIC,
+                                      "message_id": prior or 55})
             if ok:
                 passed += 1
             else:

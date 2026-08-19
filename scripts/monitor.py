@@ -462,14 +462,14 @@ def _board_failed(as_name, state_name, section):
 
 
 def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None):
-    split_live = any(store.load(constants.BOARD_STATE_KEYS[name]).get("message_id")
-                     for name in ("workshop", "domains"))
+    split_live = any(store.load(constants.board_state_key(name)).get("message_id")
+                     for name in constants.BOARD_SECTIONS if name != "activity")
     if contents is None:
         contents = {"activity": content} if content is not None else board_parts(
             api.window(as_name), as_name=as_name, force_split=split_live)
     results = {}
     for name, body in contents.items():
-        state_name = constants.BOARD_STATE_KEYS[name]
+        state_name = constants.board_state_key(name)
         message_id = store.load(state_name).get("message_id")
         try:
             new_id, changed = send_mod.board_message(
@@ -487,13 +487,23 @@ def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None)
 
 
 def domain_board(channel, body, root=None, as_name=constants.BRIDGE_IDENTITY,
-                 window_fn=None, board_fn=None):
-    """The board of a mapped channel's domain: one message in the status channel, edited in
-    place forever. Its id lives in the domain repo, not in fleet state, because the domain owns
-    what its board says and should carry the pointer with it."""
+                 window_fn=None, board_fn=None, stream_id_fn=None):
+    """The board of a mapped channel's domain: one message in that domain's own status channel,
+    edited in place forever. Its id lives in the domain repo, not in fleet state, because the
+    domain owns what its board says and should carry the pointer with it.
+
+    The destination is a convention, #<channel>-status > board, never an argument: a board that
+    can be aimed is a board that ends up in two places. The state file records the destination it
+    was posted to, so moving the convention reposts rather than editing the message it left
+    behind."""
     root = constants.domain_root(channel) if root is None else root
     if not root:
         raise ValueError(prompts.DOMAIN_BOARD_UNMAPPED.format(channel=channel))
+    status = constants.DOMAIN_STATUS_CHANNEL.format(channel=channel)
+    topic = constants.BOARD_TOPIC
+    if (stream_id_fn or api.stream_id)(as_name, status) is None:
+        raise ValueError(prompts.DOMAIN_BOARD_NO_CHANNEL.format(
+            channel=channel, status=status, topic=topic))
     window = (window_fn or api.window)(as_name)
     if len(body) > window:
         raise ValueError(prompts.DOMAIN_BOARD_TOO_LONG.format(size=len(body), window=window))
@@ -504,13 +514,12 @@ def domain_board(channel, body, root=None, as_name=constants.BRIDGE_IDENTITY,
             state = json.loads(path.read_text())
         except ValueError:
             log.warning("board state at %s is malformed; posting a fresh board", path)
+    here = (state.get("channel"), state.get("topic")) == (status, topic)
     message_id, changed = (board_fn or send_mod.board_message)(
-        as_name, constants.STATUS_STREAM,
-        constants.DOMAIN_BOARD_TOPIC.format(channel=channel), body,
-        state.get("message_id"))
-    if state.get("message_id") != message_id:
-        state["message_id"] = message_id
-        path.write_text(json.dumps(state, indent=2) + "\n")
+        as_name, status, topic, body, state.get("message_id") if here else None)
+    wanted = {"channel": status, "topic": topic, "message_id": message_id}
+    if state != wanted:
+        path.write_text(json.dumps(wanted, indent=2) + "\n")
     return message_id, changed
 
 

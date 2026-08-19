@@ -190,7 +190,7 @@ LAUNCHD_LABEL = os.environ.get("AGENT_TEAM_LAUNCHD_LABEL", "com.agent-team")
 EMOJI_RECEIPT = os.environ.get("EMOJI_RECEIPT", "eyes")
 ALERTS_TOPIC = os.environ.get("ALERTS_TOPIC", "alerts")
 BOARD_TOPIC = os.environ.get("BOARD_TOPIC", "board")
-DOMAIN_BOARD_TOPIC = os.environ.get("DOMAIN_BOARD_TOPIC", "{channel} board")
+DOMAIN_STATUS_CHANNEL = os.environ.get("DOMAIN_STATUS_CHANNEL", "{channel}-status")
 DOMAIN_BOARD_STATE = os.environ.get("DOMAIN_BOARD_STATE", "board.json")
 STATUS_STREAM = os.environ.get("STATUS_STREAM", "status")
 RUN_TIMEOUT = _num("RUN_TIMEOUT", 1800, int)
@@ -250,11 +250,17 @@ def board_channels(groups=None):
             for channel in channels}
 
 
-BOARD_STATE_KEYS = {
-    "activity": "board",
-    "workshop": "board-workshop",
-    "domains": "board-domains",
-}
+BOARD_STATE_PREFIX = "board"
+
+
+def board_state_key(section):
+    """Where a board section's message id lives. Derived, not tabled: a channel group added to
+    channels.json would otherwise KeyError every refresh once the board has split."""
+    return BOARD_STATE_PREFIX if section == "activity" \
+        else "%s-%s" % (BOARD_STATE_PREFIX, section)
+
+
+BOARD_SECTIONS = ("activity",) + tuple(group.casefold() for group, _ in BOARD_GROUPS)
 PARKED_STATE = "parked"
 
 RESOLVED_PREFIX = "✔"  # Zulip's own resolve marker on a topic name; startswith semantics only.

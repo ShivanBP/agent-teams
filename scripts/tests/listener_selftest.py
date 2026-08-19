@@ -349,6 +349,50 @@ def _body():
             print("FAIL %s selected flags %r logs=%r wanted %r log=%r" %
                   (label, selected_flags, capture.messages, expected_flags, log_substring))
 
+    # The domain header line, driven at the call site: a helper that resolves the root correctly
+    # is worth nothing if handle_wake never asks it about this wake's channel.
+    for index, (label, channel, root, required, forbidden) in enumerate(cases.WAKE_DOMAIN_LINES):
+        asked = []
+        prompts_seen = []
+
+        def _capture_run(persona, prompt, **kw):
+            prompts_seen.append(prompt)
+            raise _Stop("stop")
+
+        def _stub_domain_root(name, root=root):
+            asked.append(name)
+            return root
+
+        lane = store.lane_key("selftest-domain-%d" % index, label, "bob")
+        saved_domain = (runner.run, runner.wake_cwd, send_mod.react, send_mod.post,
+                        build_delta_record, constants.domain_root, log.disabled)
+        try:
+            log.disabled = True
+            runner.run = _capture_run
+            runner.wake_cwd = lambda *a, **k: (None, "")
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            constants.domain_root = _stub_domain_root
+            handle_wake("bob", {"message": {"stream_id": "selftest-domain-%d" % index,
+                                            "subject": label, "display_recipient": channel,
+                                            "content": "go", "sender_id": 7,
+                                            "id": 40 + index}}, frozenset())
+        finally:
+            runner.run, runner.wake_cwd = saved_domain[0], saved_domain[1]
+            send_mod.react, send_mod.post = saved_domain[2], saved_domain[3]
+            globals()["build_delta_record"] = saved_domain[4]
+            constants.domain_root = saved_domain[5]
+            store.session_drop(lane)
+        text = prompts_seen[0] if prompts_seen else ""
+        if (asked == [channel] and all(part in text for part in required)
+                and all(part not in text for part in forbidden)):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s asked %r wanted [%r], prompt required %r forbidden %r" %
+                  (label, asked, channel, required, forbidden))
+
     # The wake-failure path driven for real, everything outward stubbed: the run raises, and the
     # lane's dead session must be gone before any retry can resume it.
     for lane, session, error, expected in cases.WAKE_SESSION_CLEARED_ON_FAILURE:

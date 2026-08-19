@@ -60,6 +60,11 @@ WAKE_HEADER = (
     "only when the record below is truncated."
 )
 
+DOMAIN_LINE = (
+    "This channel's domain lives at {root}: read its CLAUDE.md and use its skills/ by path. "
+    "They are that repo's, not this session's own, so nothing loads them for you."
+)
+
 WORKTREE_STALE_WARNING = (
     "WARNING: this build worktree could not refresh at handoff and is behind origin/main "
     "(behind-count: {behind}). Its stale tree was handed to this wake instead of the shared checkout."
@@ -71,9 +76,11 @@ RECORD_TRUNCATION_NOTE = (
 )
 
 
-def wake_prompt(body, record, notice=""):
-    """Assemble header, optional handoff notice, waking body untouched, then delta record last."""
-    parts = [WAKE_HEADER]
+def wake_prompt(body, record, notice="", domain=""):
+    """Assemble header, optional handoff notice, waking body untouched, then delta record last.
+    A mapped channel adds one header line naming its domain root."""
+    header = WAKE_HEADER + ("\n" + DOMAIN_LINE.format(root=domain) if domain else "")
+    parts = [header]
     if notice:
         parts += ["", notice]
     parts += ["", body.strip()]

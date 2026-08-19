@@ -29,14 +29,14 @@ def _body():
             failed += 1
             print("FAIL %s missing %r" % (attr, substring))
 
-    for body, record, notice, expected in cases.WAKE_PROMPTS:
-        got = wake_prompt(body, record, notice)
+    for body, record, notice, domain, expected in cases.WAKE_PROMPTS:
+        got = wake_prompt(body, record, notice, domain)
         if got == expected:
             passed += 1
         else:
             failed += 1
-            print("FAIL wake_prompt(%r, %r, %r) -> %r wanted %r" %
-                  (body, record, notice, got, expected))
+            print("FAIL wake_prompt(%r, %r, %r, %r) -> %r wanted %r" %
+                  (body, record, notice, domain, got, expected))
 
     for body, notice, expected in cases.NOTICED_REPLIES:
         got = with_notice(body, notice)

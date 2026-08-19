@@ -115,6 +115,29 @@ def _body():
         failed += 1
         print("FAIL channels example does not load: %s" % exc)
 
+    try:
+        domains = json.loads(DOMAINS_EXAMPLE_PATH.read_text())
+        # empty is the shipped default: a fresh estate maps no channel, so no wake is told
+        # about a domain root that does not exist on that machine.
+        valid_rows = all(
+            isinstance(root, str) and root.startswith("/") for root in domains.values())
+        if valid_rows:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL domains example rows are not absolute paths")
+    except (OSError, ValueError) as exc:
+        failed += 1
+        print("FAIL domains example does not load: %s" % exc)
+
+    for channel, expected in cases.DOMAIN_ROOTS:
+        got = domain_root(channel, cases.DOMAIN_MAP)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL domain_root(%r) -> %r wanted %r" % (channel, got, expected))
+
     for rail, expected in cases.RAIL_DEFAULTS:
         try:
             got = set(rail_defaults(rail))

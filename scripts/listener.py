@@ -207,9 +207,13 @@ def _post_at_current_location(identity, message_id, channel, topic, body, footer
     return post_channel, post_topic
 
 
+def _failure_reason(exc):
+    """One line for a posted note, never a traceback: str(exc) collapsed, class name if it is empty."""
+    return " ".join(str(exc).split()) or type(exc).__name__
+
+
 def _post_operator_failure(template, exc, channel, topic, message_id=None):
-    reason = " ".join(str(exc).split()) or type(exc).__name__
-    body = template.format(reason=reason)
+    body = template.format(reason=_failure_reason(exc))
     try:
         if message_id is None:
             send_mod.post(constants.BRIDGE_IDENTITY, channel, topic, body)
@@ -429,13 +433,14 @@ def handle_wake(identity, event, flag_holder_ids):
                     prompts.with_notice(result.reply, worktree_notice),
                     prompts.wake_footer(result.provider, run_model, run_level, result.session_id,
                                         result.degraded))
-            except (Exception, SystemExit):
+            except (Exception, SystemExit) as exc:
                 log.exception("wake failed for lane %s", lane)
                 # a failed wake leaves no resumable session: dropped before the note, so a post
                 # that fails cannot leave the next wake resuming a corpse.
                 store.session_drop(lane)
                 try:
-                    send_mod.post(identity, channel, topic, prompts.WAKE_FAILED_NOTE)
+                    send_mod.post(identity, channel, topic,
+                                  prompts.WAKE_FAILED_NOTE.format(reason=_failure_reason(exc)))
                 except (Exception, SystemExit):
                     log.exception("failed to post the wake-failure note for lane %s", lane)
             else:

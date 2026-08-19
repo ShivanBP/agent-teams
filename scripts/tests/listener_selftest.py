@@ -142,6 +142,14 @@ def _body():
             print("FAIL _location_from_refetch(%r, %r, %r) -> %r wanted %r" %
                   (payload, fallback_channel, fallback_topic, got, expected))
 
+    for exc, expected in cases.FAILURE_REASONS:
+        got = _failure_reason(exc)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _failure_reason(%r) -> %r wanted %r" % (exc, got, expected))
+
     for text, expected in cases.OPERATOR_DECISIONS:
         got = parse_operator_decision(text)
         if got == expected:

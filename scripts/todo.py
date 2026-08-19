@@ -1,4 +1,4 @@
-"""Shared digest sweep helpers and isolated Sonnet runner."""
+"""Shared digest sweep helpers and the isolated sweep runner."""
 
 import argparse
 import json
@@ -52,33 +52,82 @@ def _model_env():
     }
 
 
-def model_command(prompt):
+def model_command(prompt, rail=None):
+    """The sweep's own command, not runner's: no tools, no session, and a temp cwd. On agy the
+    empty cwd is the whole fence, there being no --tools there."""
+    rail = rail or constants.digest_rail()
+    effort = constants.translate_effort(rail["provider"], rail["effort"])
+    if rail["provider"] == "agy":
+        return [
+            constants.AGY_BIN, "--dangerously-skip-permissions", "--disable-slash-commands",
+            "--model", rail["model"], "--effort", effort, "--output-format", "json",
+            "--print-timeout", "%ds" % constants.RUN_TIMEOUT, "-p", prompt,
+        ]
+    if rail["provider"] != "claude":
+        raise RuntimeError("digest seat provider %r is not supported" % rail["provider"])
     return [
-        "claude", "-p", "--model", constants.DIGEST_MODEL, "--output-format", "json",
+        "claude", "-p", "--model", rail["model"], "--effort", effort,
+        "--output-format", "json",
         "--tools", "", "--safe-mode", "--disable-slash-commands",
         "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
         "--no-session-persistence", prompt,
     ]
 
 
-def _record_cost(envelope, lane, cost_fn):
-    usage = envelope.get("usage") or {}
-    row = {
-        "persona": constants.BRIDGE_IDENTITY,
-        "lane": lane,
-        "usd": float(envelope.get("total_cost_usd") or 0.0),
-        "turns": int(envelope.get("num_turns") or 0),
-        "cache_read": usage.get("cache_read_input_tokens", 0),
-        "cache_creation": usage.get("cache_creation_input_tokens", 0),
-        "input_tokens": usage.get("input_tokens", 0),
-        "provider": "claude",
-        "model": constants.DIGEST_MODEL,
-        "effort": None,
-    }
+def _agy_payload(stdout):
+    """agy's --output-format json envelope, read from the last JSON line so a stream-json
+    tail parses too."""
+    for line in reversed((stdout or "").splitlines()):
+        try:
+            candidate = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(candidate, dict):
+            continue
+        if candidate.get("event") == "result" and isinstance(candidate.get("result"), dict):
+            return candidate["result"]
+        if "status" in candidate:
+            return candidate
+    raise ValueError("todo sweep model returned no JSON envelope")
+
+
+def parse_envelope(provider, stdout):
+    """(result text, cost fields) per provider. agy bills nothing, so its row records no usd."""
+    if provider == "agy":
+        payload = _agy_payload(stdout)
+        if payload.get("status") != "SUCCESS":
+            raise RuntimeError("todo sweep model status %r" % payload.get("status"))
+        usage = payload.get("usage") or {}
+        result = payload.get("response")
+        row = {
+            "usd": 0.0,
+            "turns": 1,
+            "cache_read": usage.get("cache_read_tokens", 0),
+            "cache_creation": 0,
+            "input_tokens": usage.get("input_tokens", 0),
+        }
+    else:
+        envelope = json.loads(stdout)
+        usage = envelope.get("usage") or {}
+        result = envelope.get("result")
+        row = {
+            "usd": float(envelope.get("total_cost_usd") or 0.0),
+            "turns": int(envelope.get("num_turns") or 0),
+            "cache_read": usage.get("cache_read_input_tokens", 0),
+            "cache_creation": usage.get("cache_creation_input_tokens", 0),
+            "input_tokens": usage.get("input_tokens", 0),
+        }
     for key in ("output_tokens", "thinking_tokens", "total_tokens"):
         if key in usage:
             row[key] = usage[key]
-    cost_fn(row)
+    if not isinstance(result, str):
+        raise ValueError("todo sweep model returned no JSON result string")
+    return result, row
+
+
+def _record_cost(rail, row, lane, cost_fn):
+    cost_fn(dict(row, persona=constants.BRIDGE_IDENTITY, lane=lane,
+                 provider=rail["provider"], model=rail["model"], effort=rail["effort"]))
 
 
 def parse_model_json(result):
@@ -88,19 +137,19 @@ def parse_model_json(result):
     return json.loads(text)
 
 
-def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cost_append):
+def run_model(prompt, run=subprocess.run, cwd=None, lane=None, cost_fn=store.cost_append,
+              rail=None):
+    rail = rail or constants.digest_rail()
+
     def invoke(path):
         proc = run(
-            model_command(prompt), cwd=path, env=_model_env(), capture_output=True,
+            model_command(prompt, rail), cwd=path, env=_model_env(), capture_output=True,
             text=True, timeout=constants.RUN_TIMEOUT)
         if proc.returncode != 0:
             raise RuntimeError("todo sweep model failed: %s" % proc.stderr.strip()[-500:])
-        envelope = json.loads(proc.stdout)
-        result = envelope.get("result")
-        if not isinstance(result, str):
-            raise ValueError("todo sweep model returned no JSON result string")
+        result, row = parse_envelope(rail["provider"], proc.stdout)
         if lane is not None:
-            _record_cost(envelope, lane, cost_fn)
+            _record_cost(rail, row, lane, cost_fn)
         return parse_model_json(result)
 
     if cwd is not None:

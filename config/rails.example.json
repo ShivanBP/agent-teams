@@ -1,4 +1,5 @@
 {
   "operator": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
-  "bridge": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"}
+  "bridge": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"},
+  "digest": {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"}
 }

@@ -464,6 +464,11 @@ def _body():
     log.disabled = False
 
     # run() driven for real with subprocess stubbed, so each fallback is proved at the call site.
+    # Every provider binary points at the interpreter first: run() resolves it before dispatch,
+    # and no CLI is installed offline.
+    saved_bins = {name: getattr(constants, name) for name in PROVIDER_BIN.values()}
+    for name in saved_bins:
+        setattr(constants, name, sys.executable)
     for provider, model, effort, fragments in cases.RUNNER_DEFAULT_FALLBACKS:
         captured = []
 
@@ -488,6 +493,9 @@ def _body():
                 failed += 1
                 print("FAIL run(provider=%r, model=%r, effort=%r) built no %r" %
                       (provider, model, effort, fragment))
+
+    for name, value in saved_bins.items():
+        setattr(constants, name, value)
 
     for identity, exists, expected in cases.WORKTREE_ROUTES:
         got = wants_worktree(identity, exists, cases.WORKTREE_BUILD, cases.WORKTREE_JOIN)

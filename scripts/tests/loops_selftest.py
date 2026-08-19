@@ -15,6 +15,7 @@ def _body():
     import contextlib
     import io
     import os
+    import personas
     import store
     import tests.cases as cases
 
@@ -176,9 +177,12 @@ def _body():
                           % (identity, got, expected))
 
             constants.BRIDGE_IDENTITY = "courier"
+            # a roster name, not a literal: --as a persona is the guard being tripped, and an
+            # unknown persona would refuse one line earlier for the wrong reason.
+            roster = sorted(personas.PERSONAS)[0]
             try:
                 with contextlib.redirect_stderr(io.StringIO()):
-                    fire_kick(row3["id"], "peter", "body", "bob", _refuse, state_name=test_state)
+                    fire_kick(row3["id"], roster, "body", roster, _refuse, state_name=test_state)
                 note = ""
             except _Refused as exc:
                 note = str(exc)

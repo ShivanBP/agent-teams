@@ -41,6 +41,11 @@ DOMAIN_BOARD_UNMAPPED = (
     "Refused: channel {channel} has no domain root, so there is no repo to keep its board id in."
 )
 
+DOMAIN_BOARD_NO_CHANNEL = (
+    "Refused: channel {channel} has no status channel. A domain's board lives in #{status} > "
+    "{topic}, so create that channel first; the board is never posted somewhere else."
+)
+
 DOMAIN_BOARD_TOO_LONG = (
     "Refused: the board body is {size} characters, over this server's {window}-character message "
     "window. A board is a view of open items, so cut rows rather than splitting it."

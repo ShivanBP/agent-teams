@@ -191,6 +191,22 @@ def _body():
             print("FAIL _mate_emails(%r, %r) -> %r wanted %r" %
                   (plural, singular, got, expected))
 
+    for section, expected in cases.BOARD_STATE_KEYS:
+        got = board_state_key(section)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL board_state_key(%r) -> %r wanted %r" % (section, got, expected))
+
+    # every group in the live channels config has a section, or the board KeyErrors on refresh
+    if BOARD_SECTIONS == ("activity",) + tuple(g.casefold() for g, _ in BOARD_GROUPS):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL BOARD_SECTIONS %r does not follow BOARD_GROUPS %r" %
+              (BOARD_SECTIONS, BOARD_GROUPS))
+
     for config, expected in cases.CHANNEL_GROUPS:
         groups = board_groups(config)
         flat = {channel for names in config.values() for channel in names}

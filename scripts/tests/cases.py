@@ -1487,13 +1487,21 @@ BOARD_MESSAGES = [
 # (label, channel, root, body, window, state on disk, expected refusal substring or None) for
 # monitor.domain_board. An unmapped channel has no repo to keep the id in; an oversize body is
 # refused whole, because a board split across two messages is two boards.
-# root is a flag, not a path: "" means unmapped, anything else means the fixture's temp root.
+# (label, channel, root flag, body, window, status channel resolves, state on disk, expected
+# refusal substring or None) for monitor.domain_board. root is a flag, not a path: "" means
+# unmapped, anything else means the fixture's temp root. A state file that names a different
+# destination must repost rather than edit the message left behind in the old one.
 DOMAIN_BOARDS = [
-    ("unmapped", "nowhere", "", "body", 10000, None, "no domain root"),
-    ("oversize", "mapped", "root", "x" * 30, 20, None, "over this server's"),
-    ("first post", "mapped", "root", "body", 10000, None, None),
-    ("existing id", "mapped", "root", "body", 10000, {"message_id": 77}, None),
-    ("malformed state", "mapped", "root", "body", 10000, "not json", None),
+    ("unmapped", "nowhere", "", "body", 10000, True, None, "no domain root"),
+    ("no status channel", "mapped", "root", "body", 10000, False, None, "no status channel"),
+    ("oversize", "mapped", "root", "x" * 30, 20, True, None, "over this server's"),
+    ("first post", "mapped", "root", "body", 10000, True, None, None),
+    ("here already", "mapped", "root", "body", 10000, True,
+     {"channel": "mapped-status", "topic": "board", "message_id": 77}, None),
+    ("moved home", "mapped", "root", "body", 10000, True,
+     {"channel": "status", "topic": "mapped board", "message_id": 77}, None),
+    ("id with no destination", "mapped", "root", "body", 10000, True, {"message_id": 77}, None),
+    ("malformed state", "mapped", "root", "body", 10000, True, "not json", None),
 ]
 
 # (provider_prompt args, required substrings, forbidden substrings); the three providers auto-load
@@ -1621,6 +1629,16 @@ DOMAIN_ROOTS = [
     ("mapped", "/tmp/domain"),
     ("unmapped", ""),
     ("broken", ""),
+]
+
+# (section, state key) for constants.board_state_key. The first three pin the keys the live
+# board already uses, so deriving them migrates nothing; the fourth is the case a table could
+# not answer, a channel group added to channels.json.
+BOARD_STATE_KEYS = [
+    ("activity", "board"),
+    ("workshop", "board-workshop"),
+    ("domains", "board-domains"),
+    ("jobfinder", "board-jobfinder"),
 ]
 
 CHANNEL_GROUPS = [

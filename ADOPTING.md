@@ -113,8 +113,10 @@ Create `~/.config/agent-team/` with `logs/` and `state/`. Put `bridge.zuliprc` t
 one `<persona>.zuliprc` for each persona. Put `AGENT_TEAM_MATE_EMAIL` in
 `~/.config/agent-team/.env`. Set path overrides there only when the defaults do not match
 the machine: `AGENT_TEAM_CONFIG_DIR`, `AGENT_TEAM_STATE_DIR`, `AGENT_TEAM_LOGS_DIR`,
-`AGENT_TEAM_MEMORY_DIR`, `CODEX_BIN`, `AGY_BIN`, or `OPENCODE_BIN`.
+`AGENT_TEAM_MEMORY_DIR`, `CLAUDE_BIN`, `CODEX_BIN`, `AGY_BIN`, or `OPENCODE_BIN`.
 An install retaining a nondefault launchd label also sets `AGENT_TEAM_LAUNCHD_LABEL` there.
+`BRIDGE_IDENTITY` renames the bridge seat inside the scripts only: an estate that sets it also
+renames `agents/bridge.md`, its zuliprc and its Zulip bot to match.
 
 Render the launchd template from the repository root:
 
@@ -123,6 +125,14 @@ repo_dir=$(pwd -P)
 sed -e "s|__HOME__|$HOME|g" -e "s|__REPO_DIR__|$repo_dir|g" \
   launchd/com.agent-team.plist.example > launchd/com.agent-team.plist
 ```
+
+Load the job once, from the repository root:
+
+```sh
+launchctl bootstrap gui/$(id -u) launchd/com.agent-team.plist
+```
+
+`scripts/restart.sh` only kickstarts a job already loaded, so this line runs once per machine.
 
 The human now creates the Zulip organization and one bot per persona, downloads each
 zuliprc, installs every selected harness CLI, and logs in to those CLIs. An agent must not

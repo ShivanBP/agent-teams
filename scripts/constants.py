@@ -205,6 +205,11 @@ CODEX_EFFORT = os.environ.get("CODEX_EFFORT", HARNESS_DEFAULTS["codex"]["effort"
 AGY_BIN = os.environ.get("AGY_BIN", str(Path.home() / ".local" / "bin" / "agy"))
 AGY_MODEL = os.environ.get("AGY_MODEL", HARNESS_DEFAULTS["agy"]["model"])
 AGY_EFFORT = os.environ.get("AGY_EFFORT", HARNESS_DEFAULTS["agy"]["effort"])
+# agy's pre-flight eligibility check can 429 transiently, failing at 0 turns before the model runs
+AGY_TRANSIENT_MARKER = os.environ.get(
+    "AGY_TRANSIENT_MARKER", "Eligibility check failed: RESOURCE_EXHAUSTED")
+AGY_TRANSIENT_RETRIES = _num("AGY_TRANSIENT_RETRIES", 1, int)
+AGY_TRANSIENT_DELAY_S = _num("AGY_TRANSIENT_DELAY_S", 2, int)
 OPENCODE_BIN = os.environ.get(
     "OPENCODE_BIN", str(Path.home() / ".opencode" / "bin" / "opencode"))
 OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", HARNESS_DEFAULTS["opencode"]["model"])

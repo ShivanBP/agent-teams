@@ -20,7 +20,7 @@ rules live in git; Zulip renders views of them.
 ```sh
 git clone https://github.com/soto-mate/agent-teams.git && cd agent-teams
 python3 -m venv .venv && .venv/bin/python -m pip install zulip
-for f in scripts/*.py; do .venv/bin/python "$f" --selftest || break; done
+for f in scripts/*.py; do .venv/bin/python "$f" --selftest || exit 1; done
 cp agents.examples/*.md agents/
 for f in config/*.example.json; do cp "$f" "${f%.example.json}.json"; done
 # then write one zuliprc per persona under ~/.config/agent-team/

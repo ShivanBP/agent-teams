@@ -45,10 +45,11 @@ Fleet skills live in `skills/`, one directory each with a `SKILL.md`; personas l
 its subagent format is TOML, not our Markdown.
 
 Subagents: name the model on every one you spawn, because unnamed means inherited and a
-silent spawn from an opus or fable wake spends that model on file reading. Sonnet is the
-default: reading, searching, summarizing, verifying, probing and source collection are sonnet
-work. Escalate to opus only when the subagent's output ships as-is rather than reworked by
-you, with the reason in the briefing as one line. Never spawn a subagent on fable.
+silent spawn from an expensive wake spends that model on file reading. The cheap tier is the
+default: reading, searching, summarizing, verifying, probing and source collection are cheap-tier
+work. Escalate only when the subagent's output ships as-is rather than reworked by you, with
+the reason in the briefing as one line, and never spawn one on the scarcest tier. On Claude
+that reads sonnet by default, opus to escalate, and never fable.
 
 scripts/restart.sh is the only restart path: a bare kickstart can kill a wake mid-run.
 

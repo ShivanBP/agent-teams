@@ -500,7 +500,7 @@ def wants_worktree(identity, exists, build=None, join=None):
 
 _WORKTREE_LINKS = (".venv", "config/persona-matrix.json", "config/harness-defaults.json",
                    "config/model-effort-defaults.json", "config/rails.json",
-                   "config/channels.json")
+                   "config/channels.json", "config/domains.json")
 
 
 def _worktree_add(path, branch):
@@ -518,7 +518,7 @@ def _worktree_add(path, branch):
 
 
 def _ensure_links(path):
-    """The four gitignored paths symlinked in from the main checkout. Runs on every wake, not
+    """The gitignored paths symlinked in from the main checkout. Runs on every wake, not
     only at creation, so a link that failed once is repaired instead of carried forever."""
     for name in _WORKTREE_LINKS:
         source, target = REPO_DIR / name, path / name

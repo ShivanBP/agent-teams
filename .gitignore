@@ -16,4 +16,5 @@ config/harness-defaults.json
 config/model-effort-defaults.json
 config/rails.json
 config/channels.json
+config/domains.json
 plugins/

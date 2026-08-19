@@ -21,6 +21,8 @@ RAILS_PATH = REPO_DIR / "config" / "rails.json"
 RAILS_EXAMPLE_PATH = REPO_DIR / "config" / "rails.example.json"
 CHANNELS_PATH = REPO_DIR / "config" / "channels.json"
 CHANNELS_EXAMPLE_PATH = REPO_DIR / "config" / "channels.example.json"
+DOMAINS_PATH = REPO_DIR / "config" / "domains.json"
+DOMAINS_EXAMPLE_PATH = REPO_DIR / "config" / "domains.example.json"
 
 
 def _load_json_object(path, example_path, label):
@@ -68,11 +70,16 @@ def _load_channels():
     return _load_json_object(CHANNELS_PATH, CHANNELS_EXAMPLE_PATH, "channels")
 
 
+def _load_domains():
+    return _load_json_object(DOMAINS_PATH, DOMAINS_EXAMPLE_PATH, "domains")
+
+
 _MATRIX = _load_matrix()
 HARNESS_DEFAULTS = _load_harness_defaults()
 MODEL_EFFORT_DEFAULTS = _load_model_effort_defaults()
 _RAILS = _load_rails()
 _CHANNELS = _load_channels()
+_DOMAINS = _load_domains()
 
 _EFFORT_SCALE = {
     "low": {"claude": "low", "codex": "low", "opencode": "low", "agy": "low"},
@@ -221,6 +228,13 @@ def board_groups(channels=None):
 
 
 BOARD_GROUPS = board_groups()
+
+
+def domain_root(channel, domains=None):
+    """The domain repo a channel's wakes work against, "" when the channel maps to none."""
+    rows = _DOMAINS if domains is None else domains
+    root = rows.get(channel)
+    return root if isinstance(root, str) else ""
 
 
 def board_channels(groups=None):

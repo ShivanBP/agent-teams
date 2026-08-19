@@ -1303,6 +1303,9 @@ PROMPT_CONTAINS = [
     ("RECORD_LINE", "{sender}"),
     ("RECORD_LINE", "{body}"),
     ("TAG_NOT_OPERATOR", "{sender}"),
+    ("DOMAIN_LINE", "{root}"),
+    ("DOMAIN_LINE", "skills/"),
+    ("DOMAIN_LINE", "CLAUDE.md"),
     ("TAG_NOT_OPERATOR", "not the operator"),
     ("TAG_STALE", "{max_age}"),
     ("MENTION", "@**{name}**"),
@@ -1361,14 +1364,30 @@ STATE_BLOCKS = [
       "Kicks today: 2", "Spend today: $0.75"]),
 ]
 
-# (body, record, handoff notice, expected) for prompts.wake_prompt
+# (body, record, handoff notice, domain root, expected) for prompts.wake_prompt. An unmapped
+# channel passes "" and the header is byte-identical to the old one: the line is additive.
+_DOMAIN_HEADER = prompts.WAKE_HEADER + "\n" + prompts.DOMAIN_LINE.format(root="/tmp/domain")
 WAKE_PROMPTS = [
-    ("do the thing", "", "",
+    ("do the thing", "", "", "",
      prompts.WAKE_HEADER + "\n\ndo the thing"),
-    ("do the thing", "topic record here", "",
+    ("do the thing", "topic record here", "", "",
      prompts.WAKE_HEADER + "\n\ndo the thing\n\ntopic record here"),
-    ("do the thing", "topic record here", "stale warning",
+    ("do the thing", "topic record here", "stale warning", "",
      prompts.WAKE_HEADER + "\n\nstale warning\n\ndo the thing\n\ntopic record here"),
+    ("do the thing", "", "", "/tmp/domain",
+     _DOMAIN_HEADER + "\n\ndo the thing"),
+    ("do the thing", "topic record here", "stale warning", "/tmp/domain",
+     _DOMAIN_HEADER + "\n\nstale warning\n\ndo the thing\n\ntopic record here"),
+]
+
+# (label, channel, root constants.domain_root returns, substrings the prompt must and must not
+# carry) for the listener call site. The lookup is stubbed, so the row holds in a clone whose
+# gitignored domains.json does not exist: it asserts the wiring, not this estate's map.
+WAKE_DOMAIN_LINES = [
+    ("mapped channel", "somewhere", "/tmp/domain",
+     ["/tmp/domain", "read its CLAUDE.md"], []),
+    ("unmapped channel", "elsewhere", "",
+     [], ["read its CLAUDE.md"]),
 ]
 
 NOTICED_REPLIES = [
@@ -1494,6 +1513,15 @@ MATE_EMAIL_SETS = [
 
 # (channels config, expected groups) for constants.board_groups, which keeps config order;
 # board_channels flattens the same rows.
+# (channel, expected root) for constants.domain_root against DOMAIN_MAP. A channel with no
+# entry, and a row whose value is not a string, both resolve to "" so no header line is added.
+DOMAIN_MAP = {"mapped": "/tmp/domain", "broken": ["/tmp/list"]}
+DOMAIN_ROOTS = [
+    ("mapped", "/tmp/domain"),
+    ("unmapped", ""),
+    ("broken", ""),
+]
+
 CHANNEL_GROUPS = [
     ({"Workshop": ["one"], "Domains": ["two", "three"]},
      (("Workshop", ("one",)), ("Domains", ("two", "three")))),

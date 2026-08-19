@@ -5,6 +5,7 @@ import datetime
 import difflib
 import json
 import logging
+import pathlib
 import sys
 import time
 
@@ -424,11 +425,6 @@ def board_parts(limit, lanes=None, persona_rows=None, todos=None, digests=None,
     return dict(sections)
 
 
-def _current_content(as_name, message_id):
-    message = _message(as_name, message_id)
-    return message.get("content") if message else None
-
-
 def _board_working(state_name, message_id=None):
     def save(data):
         if message_id is not None:
@@ -476,19 +472,10 @@ def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None)
         state_name = constants.BOARD_STATE_KEYS[name]
         message_id = store.load(state_name).get("message_id")
         try:
-            if message_id is None:
-                message_id = send_mod.post(
-                    as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body)
-                _board_working(state_name, message_id)
-                results[name] = (message_id, True)
-                continue
-            if _current_content(as_name, message_id) == body:
-                _board_working(state_name)
-                results[name] = (message_id, False)
-                continue
-            send_mod.update(as_name, message_id, body)
-            _board_working(state_name)
-            results[name] = (message_id, True)
+            new_id, changed = send_mod.board_message(
+                as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body, message_id)
+            _board_working(state_name, new_id if message_id is None else None)
+            results[name] = (new_id, changed)
         except (Exception, SystemExit):
             log.exception("board section %s failed to update", name)
             results[name] = (message_id, None)
@@ -497,6 +484,34 @@ def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None)
             except (Exception, SystemExit):
                 log.exception("board section %s failure state could not be saved", name)
     return results
+
+
+def domain_board(channel, body, root=None, as_name=constants.BRIDGE_IDENTITY,
+                 window_fn=None, board_fn=None):
+    """The board of a mapped channel's domain: one message in the status channel, edited in
+    place forever. Its id lives in the domain repo, not in fleet state, because the domain owns
+    what its board says and should carry the pointer with it."""
+    root = constants.domain_root(channel) if root is None else root
+    if not root:
+        raise ValueError(prompts.DOMAIN_BOARD_UNMAPPED.format(channel=channel))
+    window = (window_fn or api.window)(as_name)
+    if len(body) > window:
+        raise ValueError(prompts.DOMAIN_BOARD_TOO_LONG.format(size=len(body), window=window))
+    path = pathlib.Path(root) / constants.DOMAIN_BOARD_STATE
+    state = {}
+    if path.is_file():
+        try:
+            state = json.loads(path.read_text())
+        except ValueError:
+            log.warning("board state at %s is malformed; posting a fresh board", path)
+    message_id, changed = (board_fn or send_mod.board_message)(
+        as_name, constants.STATUS_STREAM,
+        constants.DOMAIN_BOARD_TOPIC.format(channel=channel), body,
+        state.get("message_id"))
+    if state.get("message_id") != message_id:
+        state["message_id"] = message_id
+        path.write_text(json.dumps(state, indent=2) + "\n")
+    return message_id, changed
 
 
 def refresh_board(channel=None, topic=None, digests=False,
@@ -526,9 +541,11 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--digests", action="store_true")
-    ap.add_argument("command", nargs="?", choices=("park", "unpark", "parked", "refresh"))
+    ap.add_argument("command", nargs="?",
+                    choices=("park", "unpark", "parked", "refresh", "board"))
     ap.add_argument("channel", nargs="?")
     ap.add_argument("topic", nargs="?")
+    ap.add_argument("--body-file", help="board: the rendered body to put in the domain's board")
     args = ap.parse_args()
     if args.selftest:
         return _selftest()
@@ -550,6 +567,18 @@ def main():
             print("refreshed board" if not failed_sections else
                   "refresh failed: %s" % ", ".join(failed_sections))
             return 1 if failed_sections else 0
+        if args.command == "board":
+            if args.channel is None or args.topic is not None:
+                ap.error("board takes a channel and nothing else")
+            if not args.body_file:
+                ap.error("board requires --body-file")
+            try:
+                message_id, changed = domain_board(
+                    args.channel, pathlib.Path(args.body_file).read_text())
+            except (ValueError, OSError) as exc:
+                ap.error(str(exc))
+            print("%d %s" % (message_id, "updated" if changed else "unchanged"))
+            return 0
         if args.command == "parked":
             if args.channel is not None or args.topic is not None:
                 ap.error("parked takes no channel or topic")

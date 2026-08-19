@@ -89,7 +89,7 @@ def _body():
     old_ready, old_window, old_request, old_check = _ready, api.window, api.request, api.check
     calls = []
     try:
-        globals()["_ready"] = lambda as_name: {"name": as_name}
+        globals()["_ready"] = lambda as_name, enforce=True: {"name": as_name}
         api.window = lambda as_name: 10000
         api.request = lambda cfg, method, path, params: calls.append(
             (cfg, method, path, params)) or {"result": "success"}
@@ -108,5 +108,31 @@ def _body():
     finally:
         globals()["_ready"] = old_ready
         api.window, api.request, api.check = old_window, old_request, old_check
+
+    # board_message drives the real post/update doors, so a row proves which one was spent.
+    old_post, old_update, old_current = post, update, current_content
+    for label, message_id, live, body, expected, expected_call in cases.BOARD_MESSAGES:
+        doors = []
+        saved_window = api.window
+        try:
+            api.window = lambda name: 10000
+            globals()["post"] = lambda a, c, t, b, enforce=True: doors.append(
+                ("post", b, enforce)) or 99
+            globals()["update"] = lambda a, mid, b, enforce=True: doors.append(
+                ("update", b, enforce)) or int(mid)
+            globals()["current_content"] = lambda a, mid, live=live: live.get(int(mid))
+            got = board_message("board-bot", "status", "a board", body, message_id)
+        finally:
+            globals()["post"], globals()["update"] = old_post, old_update
+            globals()["current_content"] = old_current
+            api.window = saved_window
+        want_doors = [] if expected_call is None else [expected_call + (False,)]
+        if got == expected and doors == want_doors:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL board_message %s -> %r doors %r, wanted %r doors %r" %
+                  (label, got, doors, expected, want_doors))
+
     print("send.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

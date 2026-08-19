@@ -37,6 +37,15 @@ NARROW_MISS = "Refused: channel {channel} did not resolve for identity {identity
 
 VERB_BRIDGE_ONLY = "Refused: {verb} is bridge-only; --as {asked} may not use it."
 
+DOMAIN_BOARD_UNMAPPED = (
+    "Refused: channel {channel} has no domain root, so there is no repo to keep its board id in."
+)
+
+DOMAIN_BOARD_TOO_LONG = (
+    "Refused: the board body is {size} characters, over this server's {window}-character message "
+    "window. A board is a view of open items, so cut rows rather than splitting it."
+)
+
 TOPIC_ANCHOR_MISS = "Refused: no message found in {channel} > {topic} to anchor the edit."
 
 # --- wake scaffolding (Phase 2): everything around the waking body, never inside a persona file ---

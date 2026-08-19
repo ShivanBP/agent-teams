@@ -1395,6 +1395,31 @@ NOTICED_REPLIES = [
     ("done", "stale warning", "stale warning\n\ndone"),
 ]
 
+# (label, message_id passed in, what is live at that id, body, expected (id, changed), expected
+# call) for send.board_message. "post" and "update" name which door it went through; the
+# identical-body row must spend neither, or every no-op sweep edits the board for nothing.
+BOARD_MESSAGES = [
+    ("first post", None, {}, "one", (99, True), ("post", "one")),
+    ("body unchanged", 99, {99: "one"}, "one", (99, False), None),
+    ("body changed", 99, {99: "one"}, "two", (99, True), ("update", "two")),
+    ("live body missing", 99, {}, "one", (99, True), ("update", "one")),
+    # Zulip strips a trailing newline on save, so a body that ends in one still matches what
+    # is live and must not spend a PATCH.
+    ("trailing newline only", 99, {99: "one"}, "one\n", (99, False), None),
+]
+
+# (label, channel, root, body, window, state on disk, expected refusal substring or None) for
+# monitor.domain_board. An unmapped channel has no repo to keep the id in; an oversize body is
+# refused whole, because a board split across two messages is two boards.
+# root is a flag, not a path: "" means unmapped, anything else means the fixture's temp root.
+DOMAIN_BOARDS = [
+    ("unmapped", "nowhere", "", "body", 10000, None, "no domain root"),
+    ("oversize", "mapped", "root", "x" * 30, 20, None, "over this server's"),
+    ("first post", "mapped", "root", "body", 10000, None, None),
+    ("existing id", "mapped", "root", "body", 10000, {"message_id": 77}, None),
+    ("malformed state", "mapped", "root", "body", 10000, "not json", None),
+]
+
 # (provider_prompt args, required substrings, forbidden substrings); the three providers auto-load
 # AGENTS.md themselves, so no row may carry a repo rules block.
 PROVIDER_PROMPTS = [

@@ -115,10 +115,12 @@ def _upload(as_name, path):
     return url
 
 
-def _ready(as_name):
+def _ready(as_name, enforce=True):
     """enforce_identity then load, the pair every posting/verb function needs before its first
-    API call; post, resolve_topic, move_topic, and react shared this shape before extraction."""
-    api.enforce_identity(as_name)
+    API call; post, resolve_topic, move_topic, and react shared this shape before extraction.
+    enforce=False is the board grant and nothing else: grep it to see every use."""
+    if enforce:
+        api.enforce_identity(as_name)
     return api.load(as_name)
 
 
@@ -142,8 +144,8 @@ def _strip_and_guard(text, as_name):
     return text
 
 
-def post(as_name, stream, topic, body, files=(), footer=""):
-    cfg = _ready(as_name)
+def post(as_name, stream, topic, body, files=(), footer="", enforce=True):
+    cfg = _ready(as_name, enforce)
     body, accepted = _extract(body or "", files)
     links = []
     for path in accepted:
@@ -167,8 +169,8 @@ def post(as_name, stream, topic, body, files=(), footer=""):
     return payload["id"]
 
 
-def update(as_name, message_id, content):
-    cfg = _ready(as_name)
+def update(as_name, message_id, content, enforce=True):
+    cfg = _ready(as_name, enforce)
     content = _strip_and_guard(content, as_name)
     api.check(
         api.request(
@@ -180,6 +182,38 @@ def update(as_name, message_id, content):
         "PATCH /messages (content)",
     )
     return int(message_id)
+
+
+def current_content(as_name, message_id):
+    """The stored body, markdown unrendered: what an idempotent board edit compares against
+    before it spends a PATCH."""
+    payload = api.request(
+        api.load(as_name), "GET", "/api/v1/messages/%d" % int(message_id),
+        {"apply_markdown": False},
+    )
+    message = payload.get("message") if payload.get("result") == "success" else None
+    return message.get("content") if message else None
+
+
+def board_message(as_name, channel, topic, body, message_id=None):
+    """Post a board once, then edit that message in place forever. Returns (message_id, changed);
+    a body identical to what is live spends no PATCH.
+
+    The comparison runs against what would actually be sent, stripped: Zulip drops a trailing
+    newline on save, so a raw compare never matches a body that ends in one and every no-op
+    sweep would spend a PATCH and stamp the board "edited" (measured 2026-08-18).
+
+    This is the one path that posts as someone other than the running wake. A Zulip message is
+    editable only by its author, proven 2026-08-18: a persona seat PATCHing another bot's message
+    gets "You don't have permission to edit this message". So a board authored by whichever
+    persona happened to run the sweep could never be edited again. The grant is narrow by
+    construction: the caller chooses neither the identity nor the channel nor the topic."""
+    if message_id is None:
+        return post(as_name, channel, topic, body, enforce=False), True
+    live = current_content(as_name, message_id)
+    if live is not None and live.strip() == _strip_and_guard(body, as_name).strip():
+        return int(message_id), False
+    return update(as_name, message_id, body, enforce=False), True
 
 
 def verb_allowed(as_name):

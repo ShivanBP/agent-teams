@@ -12,6 +12,10 @@ def run(module):
 
 
 def _body():
+    import json
+    import pathlib
+    import tempfile
+
     import api
     import constants
     import prompts
@@ -209,28 +213,34 @@ def _body():
         print("FAIL refresh_board modes -> %r %r %r" %
               (refreshes, sweeps, board_refreshes))
 
-    states, current, posts, updates = {}, {}, [], []
-    saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
+    states, current, boards = {}, {}, []
+    saved = store.load, store.mutate, send_mod.board_message
     try:
         store.load = lambda name: dict(states.get(name, {}))
 
         def mutate_state(name, fn):
             states[name] = fn(dict(states.get(name, {})))
 
+        def board_stub(as_name, channel, topic, body, message_id=None):
+            boards.append((as_name, channel, topic, body, message_id))
+            if message_id is None:
+                message_id = 98 + len([row for row in boards if row[4] is None])
+                current[message_id] = body
+                return message_id, True
+            if current.get(message_id) == body:
+                return message_id, False
+            current[message_id] = body
+            return message_id, True
+
         store.mutate = mutate_state
-        send_mod.post = lambda *args: posts.append(args) or (98 + len(posts))
-        send_mod.update = lambda *args: updates.append(args) or args[1]
-        globals()["_current_content"] = lambda as_name, message_id: current.get(message_id)
+        send_mod.board_message = board_stub
         first = update_board(content="one")
-        current[99] = "one"
         unchanged = update_board(content="one")
         changed = update_board(content="two")
-        current[99] = "two"
         split = update_board(contents={
             "activity": "activity", "workshop": "workshop", "domains": "domains"})
     finally:
-        store.load, store.mutate, send_mod.post, send_mod.update = saved[:4]
-        globals()["_current_content"] = saved[4]
+        store.load, store.mutate, send_mod.board_message = saved
     if first == {"activity": (99, True)} and unchanged == {"activity": (99, False)} \
             and changed == {"activity": (99, True)} \
             and split == {"activity": (99, True), "workshop": (100, True),
@@ -238,14 +248,13 @@ def _body():
             and states == {"board": {"message_id": 99},
                            "board-workshop": {"message_id": 100},
                            "board-domains": {"message_id": 101}} \
-            and len(posts) == 3 \
-            and updates == [(constants.BRIDGE_IDENTITY, 99, "two"),
-                            (constants.BRIDGE_IDENTITY, 99, "activity")]:
+            and [row[2] for row in boards] == [constants.BOARD_TOPIC] * 6 \
+            and [row[4] for row in boards] == [None, 99, 99, 99, None, None]:
         passed += 1
     else:
         failed += 1
-        print("FAIL update_board sequence: %r %r %r split=%r states=%r posts=%r updates=%r" %
-              (first, unchanged, changed, split, states, posts, updates))
+        print("FAIL update_board sequence: %r %r %r split=%r states=%r boards=%r" %
+              (first, unchanged, changed, split, states, boards))
 
     states = {
         "board": {"message_id": 99},
@@ -254,7 +263,7 @@ def _body():
     }
     alerts, update_attempts = [], []
     fail_activity = [True]
-    saved = store.load, store.mutate, send_mod.post, send_mod.update, _current_content
+    saved = store.load, store.mutate, send_mod.post, send_mod.board_message
     log_disabled = log.disabled
     try:
         store.load = lambda name: dict(states.get(name, {}))
@@ -262,16 +271,15 @@ def _body():
         def mutate_failure_state(name, fn):
             states[name] = fn(dict(states.get(name, {})))
 
-        def update_section(as_name, message_id, body):
+        def board_section(as_name, channel, topic, body, message_id=None):
             update_attempts.append(message_id)
             if message_id == 99 and fail_activity[0]:
                 raise SystemExit("414")
-            return message_id
+            return message_id, True
 
         store.mutate = mutate_failure_state
         send_mod.post = lambda *args: alerts.append(args) or 200
-        send_mod.update = update_section
-        globals()["_current_content"] = lambda as_name, message_id: "old"
+        send_mod.board_message = board_section
         log.disabled = True
         isolated = update_board(contents={
             "activity": "new activity", "workshop": "new workshop", "domains": "new domains"})
@@ -280,8 +288,7 @@ def _body():
         fail_activity[0] = False
         recovered = update_board(contents={"activity": "new activity"})
     finally:
-        store.load, store.mutate, send_mod.post, send_mod.update = saved[:4]
-        globals()["_current_content"] = saved[4]
+        store.load, store.mutate, send_mod.post, send_mod.board_message = saved
         log.disabled = log_disabled
     if isolated == {"activity": (99, None), "workshop": (100, True),
                     "domains": (101, True)} \
@@ -296,6 +303,45 @@ def _body():
         failed += 1
         print("FAIL update_board isolation: %r %r %r state=%r alerts=%r attempts=%r" %
               (isolated, repeated, recovered, states, alerts, update_attempts))
+
+    # domain_board: the id lives in the domain repo, so each row gets its own throwaway root.
+    for label, channel, root, body, window, state, refusal in cases.DOMAIN_BOARDS:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / constants.DOMAIN_BOARD_STATE
+            if state is not None:
+                path.write_text(state if isinstance(state, str) else json.dumps(state))
+            sent = []
+
+            def board_stub(as_name, channel, topic, body, message_id=None):
+                sent.append((as_name, channel, topic, body, message_id))
+                return (message_id or 55), True
+
+            log_disabled = log.disabled
+            try:
+                log.disabled = True
+                got = domain_board(channel, body, root=(tmp if root else ""),
+                                   window_fn=lambda name: window, board_fn=board_stub)
+                error = None
+            except ValueError as exc:
+                got, error = None, str(exc)
+            finally:
+                log.disabled = log_disabled
+            written = json.loads(path.read_text()) if path.is_file() else None
+            if refusal:
+                ok = error is not None and refusal in error and not sent
+            else:
+                prior = state.get("message_id") if isinstance(state, dict) else None
+                ok = (error is None and got == ((prior or 55), True)
+                      and len(sent) == 1
+                      and sent[0][2] == constants.DOMAIN_BOARD_TOPIC.format(channel=channel)
+                      and sent[0][4] == prior
+                      and written == {"message_id": prior or 55})
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL domain_board %s -> %r error=%r sent=%r written=%r" %
+                      (label, got, error, sent, written))
 
     print("monitor.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

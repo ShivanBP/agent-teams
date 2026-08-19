@@ -105,6 +105,16 @@ naming convention batch, 2026-08-12); every other identity is refused before any
 Read-only API GETs under your own zuliprc are open to everyone; writes go through send.py
 verbs only.
 
+`monitor.py board CHANNEL --body-file PATH` is the one write that does not go out under the
+running wake's own name (jobfinder recut, 2026-08-18). A Zulip message is editable only by its
+author, proven that day: a persona seat PATCHing another bot's message gets "You don't have
+permission to edit this message". A board authored by whichever persona happened to run the
+sweep could therefore never be edited again, so the board goes out under the board identity.
+The grant is narrow by construction and is the whole of it: the caller chooses neither the
+identity nor the channel nor the topic, only the body, and the channel must already be mapped
+in `config/domains.json`. The blast radius is one message in one never-resolved status topic.
+In code the grant is `enforce=False`, passed from `send.board_message` and nowhere else.
+
 ## Channel descriptions (canonical copy)
 
 Zulip keeps no edit history for a channel description, so the repo holds the canonical text

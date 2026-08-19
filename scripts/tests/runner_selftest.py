@@ -290,12 +290,15 @@ def _body():
                   (inherited, got, expected))
 
     claude_logs = []
-    old_claude = _run_claude
+    old_claude, old_bin = _run_claude, constants.CLAUDE_BIN
     try:
+        # run() resolves the binary before dispatch, and no CLI is installed offline: the
+        # interpreter stands in as a binary that is always there.
+        constants.CLAUDE_BIN = sys.executable
         globals()["_run_claude"] = lambda *a, **kw: claude_logs.append(kw.get("wake_log"))
         run("bob", "hi", provider="claude", lane=cases.CLAUDE_LOG_LANE)
     finally:
-        globals()["_run_claude"] = old_claude
+        globals()["_run_claude"], constants.CLAUDE_BIN = old_claude, old_bin
     expected_log = _wake_log_path(cases.CLAUDE_LOG_LANE)
     if claude_logs == [expected_log]:
         passed += 1

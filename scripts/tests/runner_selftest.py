@@ -106,6 +106,38 @@ def _body():
             failed += 1
             print("FAIL _parse_agy(...) -> %r wanted %r" % (got, expected))
 
+    # A 429 from agy's pre-flight eligibility check retries; any other exit still raises at once.
+    original_delay = constants.AGY_TRANSIENT_DELAY_S
+    constants.AGY_TRANSIENT_DELAY_S = 0
+    saved_jsonl = globals()["_run_jsonl"]
+    try:
+        for runs, expected, expected_attempts in cases.AGY_TRANSIENT_RUNS:
+            attempts = []
+
+            def _staged_run(cmd, **kw):
+                code, stderr = runs[len(attempts)]
+                attempts.append(code)
+                proc = subprocess.CompletedProcess(cmd, code, "", stderr)
+                return proc, cases.AGY_TRANSIENT_STDOUT if code == 0 else ""
+
+            globals()["_run_jsonl"] = _staged_run
+            try:
+                got = _run_agy(
+                    "bob", "wake", model="m", effort="high",
+                    session=cases.AGY_TRANSIENT_SESSION, cwd=None, timeout=1,
+                    identity=None).reply
+            except RuntimeError:
+                got = "raised"
+            if got == expected and len(attempts) == expected_attempts:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL _run_agy(%r) -> %r in %d attempts wanted %r in %d" %
+                      (runs, got, len(attempts), expected, expected_attempts))
+    finally:
+        globals()["_run_jsonl"] = saved_jsonl
+        constants.AGY_TRANSIENT_DELAY_S = original_delay
+
     for raw, expected in cases.FRONTMATTER_REMOVALS:
         got = _without_frontmatter(raw)
         if got == expected:

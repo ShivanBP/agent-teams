@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -471,13 +472,22 @@ def _run_agy(persona, prompt, *, model, effort, session, cwd, timeout, identity,
     cmd = _build_cmd_agy(model, session, effort, run_cwd, timeout, run_prompt)
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
-    proc, stdout = _run_jsonl(
-        cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
-        tee_stderr=True)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "agy failed (exit %d) for persona %s: %s" %
-            (proc.returncode, persona, _failure_output(proc.stderr, stdout)))
+    for attempt in range(constants.AGY_TRANSIENT_RETRIES + 1):
+        proc, stdout = _run_jsonl(
+            cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
+            tee_stderr=True)
+        if proc.returncode == 0:
+            break
+        failure = _failure_output(proc.stderr, stdout)
+        # The eligibility 429 lands before the model runs, so the rerun duplicates no turn
+        # and resumes no session (Peter, 2026-08-18).
+        if (constants.AGY_TRANSIENT_MARKER not in failure
+                or attempt == constants.AGY_TRANSIENT_RETRIES):
+            raise RuntimeError(
+                "agy failed (exit %d) for persona %s: %s" % (proc.returncode, persona, failure))
+        log.warning("agy eligibility check 429 for persona %s, retrying in %ss",
+                    persona, constants.AGY_TRANSIENT_DELAY_S)
+        time.sleep(constants.AGY_TRANSIENT_DELAY_S)
     reply, session_id, turns, usage, degraded = _parse_agy(stdout, session)
     return Result(reply=reply.strip(), session_id=session_id, cost_usd=0.0, turns=turns,
                   usage=usage, provider="agy", degraded=degraded)

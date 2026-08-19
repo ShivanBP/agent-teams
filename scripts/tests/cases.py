@@ -270,6 +270,22 @@ AGY_RUNNER_CMDS = [
     ),
 ]
 
+AGY_TRANSIENT_SESSION = "agy-retry"
+AGY_TRANSIENT_STDOUT = (
+    '{"status":"SUCCESS","conversation_id":"agy-retry","response":"after retry",'
+    '"usage":{"input_tokens":1}}'
+)
+AGY_TRANSIENT_STDERR = (
+    "Eligibility check failed: RESOURCE_EXHAUSTED (code 429): Resource has been exhausted."
+)
+# (exit codes and stderr per attempt, expected reply or "raised", expected attempts)
+AGY_TRANSIENT_RUNS = [
+    ([(1, AGY_TRANSIENT_STDERR), (0, "")], "after retry", 2),
+    ([(1, AGY_TRANSIENT_STDERR), (1, AGY_TRANSIENT_STDERR)], "raised", 2),
+    ([(1, "agy: permission denied"), (0, "")], "raised", 1),
+    ([(0, "")], "after retry", 1),
+]
+
 FRONTMATTER_REMOVALS = [
     ("---\nname: bob\nmodel: opus\n---\nBuilder body.\n", "Builder body."),
     ("Persona body without frontmatter.\n", "Persona body without frontmatter."),

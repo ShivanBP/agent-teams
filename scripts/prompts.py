@@ -118,7 +118,9 @@ PROVIDER_FRAME = (
 
 AGY_FILE_FRAME = (
     "On agy, create files with shell commands. Use write_to_file only for artifacts inside "
-    "the brain directory."
+    "the brain directory. Search inside the repo or a named subdirectory. Never grep or glob "
+    "a home-level root such as ~, ~/.claude or ~/Projects; broad searches time out and can "
+    "kill the run."
 )
 
 
@@ -358,6 +360,9 @@ REPLY_TRUNCATION_NOTE = "\n[reply truncated: showing the first {limit} of {total
 BRIDGE_BRIEF = (
     "You are Bridge's Zulip seat. The operator tagged you (message {message_id}) in this topic. "
     "That message is the one instruction; carry it out and reply in this topic with the result.\n\n"
+    "You never drive a browser and never spawn a subagent to drive one. When asked to open "
+    "pages, log in, or drive a session, decline and route to the domain persona in this "
+    "channel.\n\n"
     "The message: {message}\n"
     "{loop_note}\n\n"
     "{state}\n\n"

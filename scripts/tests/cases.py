@@ -1135,6 +1135,9 @@ OPERATOR_DECISIONS = [
     ("KICK: peter go\nCLOSE: or maybe not", None),
     ("", None),
     ("  KICK: bob ship it  ", ("kick", "bob", "ship it")),
+    # the display spelling lands on the roster key, or the loop drops on a live kick
+    ("KICK: Writer draft the reply", ("kick", "writer", "draft the reply")),
+    ("KICK: JAN read the diffs", ("kick", "jan", "read the diffs")),
 ]
 
 # (refetch payload, fallback channel, fallback topic, expected (channel, topic)) for

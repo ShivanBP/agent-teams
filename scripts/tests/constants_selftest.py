@@ -91,11 +91,19 @@ def _body():
             and row["provider"] in _EFFORT_SCALE[row["effort"]]
             for row in rails.values()
         )
-        if set(rails) == {"operator", "bridge"} and valid_rows:
+        if set(rails) == {"operator", "bridge", "digest"} and valid_rows:
             passed += 1
         else:
             failed += 1
             print("FAIL rails example keys or rows are invalid")
+        # the fallback is the migration: a live rails.json older than the digest seat keeps
+        # sweeping, on the example's row.
+        if digest_rail(cases.DIGEST_SEAT) == cases.DIGEST_SEAT["digest"] \
+                and digest_rail({}) == rails["digest"]:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL digest_rail lookup or its example fallback")
     except (OSError, ValueError) as exc:
         failed += 1
         print("FAIL rails example does not load: %s" % exc)

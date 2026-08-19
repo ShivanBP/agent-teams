@@ -969,10 +969,57 @@ TODO_CAP_CHARS = 24
 TODO_CAP_EXPECTED = [{"id": 2, "content": "b"}]
 TODO_CAP_DROPPED = 1
 
-TODO_COMMAND_CONTAINS = [
-    "claude", "-p", "--model", "sonnet", "--output-format", "json", "--tools", "--safe-mode",
-    "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence",
+TODO_RAIL_CLAUDE = {"provider": "claude", "model": "sonnet", "effort": "mid"}
+TODO_RAIL_AGY = {"provider": "agy", "model": "gemini-3.7-flash", "effort": "high"}
+
+# (digest seat, parts the command must carry) for todo.model_command, one row per provider
+TODO_COMMANDS = [
+    (TODO_RAIL_CLAUDE,
+     ["claude", "-p", "--model", "sonnet", "--effort", "medium", "--output-format", "json",
+      "--tools", "--safe-mode", "--disable-slash-commands", "--strict-mcp-config",
+      "--no-session-persistence"]),
+    (TODO_RAIL_AGY,
+     ["--dangerously-skip-permissions", "--disable-slash-commands", "--model",
+      "gemini-3.7-flash", "--effort", "high", "--output-format", "json", "--print-timeout",
+      "-p"]),
 ]
+
+TODO_CLAUDE_STDOUT = (
+    '{"result":"[]","total_cost_usd":0.012,"num_turns":1,'
+    '"usage":{"input_tokens":12,"output_tokens":3}}')
+TODO_AGY_STDOUT = (
+    '{"conversation_id":"c1","status":"SUCCESS","response":"[]",'
+    '"usage":{"input_tokens":15526,"output_tokens":274,"thinking_tokens":119,'
+    '"cache_read_tokens":7,"total_tokens":15800}}')
+TODO_CLAUDE_ROW = {"usd": 0.012, "turns": 1, "cache_read": 0, "cache_creation": 0,
+                   "input_tokens": 12, "output_tokens": 3}
+TODO_AGY_ROW = {"usd": 0.0, "turns": 1, "cache_read": 7, "cache_creation": 0,
+                "input_tokens": 15526, "output_tokens": 274, "thinking_tokens": 119,
+                "total_tokens": 15800}
+
+# (provider, stdout, (result text, cost fields) or the exception type) for todo.parse_envelope:
+# agy's own envelope, the same payload inside a stream-json result event, a failed status, and
+# claude's envelope missing its result string.
+TODO_ENVELOPES = [
+    ("claude", TODO_CLAUDE_STDOUT, ("[]", TODO_CLAUDE_ROW)),
+    ("agy", TODO_AGY_STDOUT, ("[]", TODO_AGY_ROW)),
+    ("agy", '{"event":"start"}\n{"event":"result","result":%s}' % TODO_AGY_STDOUT,
+     ("[]", TODO_AGY_ROW)),
+    ("agy", '{"conversation_id":"c1","status":"ERROR","response":""}', RuntimeError),
+    ("claude", '{"total_cost_usd":0.0}', ValueError),
+    ("agy", "not json", ValueError),
+]
+
+# (digest seat, stdout, the cost row it must write) for todo.run_model
+TODO_RUNS = [
+    (TODO_RAIL_CLAUDE, TODO_CLAUDE_STDOUT,
+     dict(TODO_CLAUDE_ROW, provider="claude", model="sonnet", effort="mid")),
+    (TODO_RAIL_AGY, TODO_AGY_STDOUT,
+     dict(TODO_AGY_ROW, provider="agy", model="gemini-3.7-flash", effort="high")),
+]
+
+# a live rails.json that carries the digest seat, for constants.digest_rail
+DIGEST_SEAT = {"digest": {"provider": "claude", "model": "sonnet", "effort": "mid"}}
 
 TODO_MODEL_JSON = [
     ('{"summary":"ok","items":[]}', {"summary": "ok", "items": []}),

@@ -122,6 +122,16 @@ def rail_defaults(rail):
         raise RuntimeError("rail %r is absent from the rails config" % rail)
 
 
+def digest_rail(rails=None):
+    """The digest sweep's seat, sharing the rails file for its identical three fields. Falls back
+    to the tracked example so a live rails.json older than the seat keeps sweeping."""
+    rails = _RAILS if rails is None else rails
+    if "digest" in rails:
+        return dict(rails["digest"])
+    log.warning("rails config has no digest seat; using %s", RAILS_EXAMPLE_PATH)
+    return dict(_load_json_object(RAILS_EXAMPLE_PATH, RAILS_EXAMPLE_PATH, "rails")["digest"])
+
+
 def _num(name, default, cast):
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -169,7 +179,6 @@ STALL_MIN = _num("STALL_MIN", 10, int)
 LSOF_BIN = os.environ.get("LSOF_BIN", "/usr/sbin/lsof")
 BOARD_TOPIC_DAYS = _num("BOARD_TOPIC_DAYS", 7, int)
 DIGEST_SWEEP_MIN = _num("DIGEST_SWEEP_MIN", 360, int)
-DIGEST_MODEL = "sonnet"
 DIGEST_MAX_CHARS = _num("DIGEST_MAX_CHARS", 30000, int)
 DIGEST_FETCH_LIMIT = _num("DIGEST_FETCH_LIMIT", 1000, int)
 DIGEST_SUMMARY_MAX = _num("DIGEST_SUMMARY_MAX", 120, int)

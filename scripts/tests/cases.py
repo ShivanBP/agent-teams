@@ -1452,6 +1452,8 @@ PROMPT_CONTAINS = [
     ("BRIDGE_BRIEF", "{state}"),
     ("BRIDGE_BRIEF", "{message_id}"),
     ("BRIDGE_BRIEF", "You are Bridge's Zulip seat"),
+    ("BRIDGE_BRIEF", "never drive a browser and never spawn a subagent to drive one"),
+    ("BRIDGE_BRIEF", "route to the domain persona in this channel"),
     ("OPERATOR_CONTINUATION_FAILED", "{reason}"),
     ("OPERATOR_CONTINUATION_FAILED", "Tag the bridge again to retry"),
     ("BRIDGE_REPLY_FAILED", "{reason}"),
@@ -1561,7 +1563,8 @@ PROVIDER_PROMPTS = [
         ("agy", "peter", "wake", "persona body", "memory body"),
         ("Peter running through agy", "memory body", "Current wake:\nwake",
          "On agy, create files with shell commands",
-         "write_to_file only for artifacts inside the brain directory"),
+         "write_to_file only for artifacts inside the brain directory",
+         "Never grep or glob a home-level root"),
         ("Repository rules:",),
     ),
     (

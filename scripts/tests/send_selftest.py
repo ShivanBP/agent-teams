@@ -86,6 +86,20 @@ def _body():
         else:
             failed += 1
             print("FAIL verb_allowed(%r) -> %r, wanted %r" % (as_name, got, expected))
+    import constants
+    saved_identity = constants.BRIDGE_IDENTITY
+    try:
+        for identity, as_name, expected in cases.VERB_GATE_RENAMED:
+            constants.BRIDGE_IDENTITY = identity
+            got = verb_allowed(as_name)
+            if got == expected:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL verb_allowed(%r) under BRIDGE_IDENTITY=%r -> %r wanted %r"
+                      % (as_name, identity, got, expected))
+    finally:
+        constants.BRIDGE_IDENTITY = saved_identity
     old_ready, old_window, old_request, old_check = _ready, api.window, api.request, api.check
     calls = []
     try:

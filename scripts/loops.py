@@ -173,8 +173,8 @@ def fire_kick(loop_id, persona, body, as_name, refuse, state_name=STATE_NAME):
         refuse("unknown persona: %s" % persona)
     if as_name in personas.PERSONAS:
         # a persona-authored kick posts a mention strip_persona_mentions neutralizes: it would
-        # record a kick that wakes nobody. Kicks post as bridge.
-        refuse("kicks post as bridge, not as %s" % as_name)
+        # record a kick that wakes nobody. Kicks post as the bridge identity.
+        refuse("kicks post as %s, not as %s" % (constants.BRIDGE_IDENTITY, as_name))
     api.enforce_identity(as_name)
     stream_id, topic, _content = resolve_header(as_name, row["header_id"])
     if topic is None:
@@ -206,7 +206,7 @@ def main():
     kk.add_argument("--id", required=True)
     kk.add_argument("--persona", required=True)
     kk.add_argument("--body", required=True)
-    kk.add_argument("--as", dest="as_name", default="bridge")
+    kk.add_argument("--as", dest="as_name", default=constants.BRIDGE_IDENTITY)
 
     ls = sub.add_parser("list")
     ls.add_argument("--all", action="store_true")

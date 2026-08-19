@@ -5,6 +5,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import constants
 import prompts
 
 Z = "\u200b"
@@ -121,7 +122,7 @@ EXTRACTS = [
 
 # (as_name, expected allowed) for send.verb_allowed (--resolve / --move-to are bridge-only)
 VERB_GATE = [
-    ("bridge", True),
+    (constants.BRIDGE_IDENTITY, True),
     ("bob", False),
     ("archie", False),
     ("", False),
@@ -157,6 +158,34 @@ FAILURE_REASONS = [
 UPDATES = [
     ("bridge", 123, "board", "board"),
     ("bridge", 456, "no @**all** ping", "no @" + Z + "**all** ping"),
+]
+
+# (BRIDGE_IDENTITY value, --as name, expected) for send.verb_allowed with the seat renamed: the
+# grant follows the constant, and the old word loses it.
+VERB_GATE_RENAMED = [
+    ("courier", "courier", True),
+    ("courier", "bridge", False),
+    ("courier", "bob", False),
+]
+
+# (label, BRIDGE_IDENTITY value, files, expected stems) for personas._scan with the seat renamed:
+# the seat's own agent file is excluded by identity, and the old stem is just another persona file.
+PERSONA_SCAN_RENAMED = [
+    ("renamed seat excluded", "courier",
+     [("planner.md", "---\nname: planner\n---\nbody\n"),
+      ("courier.md", "courier fixture without frontmatter\n"),
+      ("operator.md", "operator fixture without frontmatter\n")],
+     {"planner"}),
+    ("old stem no longer special", "courier",
+     [("bridge.md", "---\nname: bridge\n---\nbody\n")],
+     {"bridge"}),
+]
+
+# (BRIDGE_IDENTITY value, kick argv without --as, expected as_name) for loops.main: the kick
+# default is the seat identity, not a literal.
+KICK_AS_DEFAULTS = [
+    ("courier", ["kick", "--id", "L1", "--persona", "peter", "--body", "go"], "courier"),
+    ("bridge", ["kick", "--id", "L1", "--persona", "peter", "--body", "go"], "bridge"),
 ]
 
 # (content, expected) for read.indent
@@ -536,8 +565,8 @@ MEMORY_IDENTITIES = [
 # (rail label, expected persona, expected identity kwarg) for the runner.run call each operator
 # rail makes: both spawn under the bridge identity, so neither keys memory on its agent file name.
 OPERATOR_SPAWNS = [
-    ("rail A", "operator", "bridge"),
-    ("rail B", "bridge", "bridge"),
+    ("rail A", "operator", constants.BRIDGE_IDENTITY),
+    ("rail B", constants.BRIDGE_IDENTITY, constants.BRIDGE_IDENTITY),
 ]
 
 # (label, tag age in minutes, expected receipt reactions) for handle_operator_tag. A tag the

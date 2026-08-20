@@ -5,6 +5,7 @@ __pycache__/
 .venv
 .DS_Store
 .mcp.json
+.playwright-mcp/
 .private/
 memory/
 plans/

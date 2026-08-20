@@ -206,9 +206,12 @@ def _body():
     failure_posts = []
     location_requests = []
 
+    inflight_during = []
+
     def _stub_run(persona, prompt, **kw):
         spawns.append((persona, kw.get("identity")))
         briefs.append(prompt)
+        inflight_during.append((kw.get("lane"), sorted(store.inflight_all())))
         raise _Stop("529\nOverloaded")
 
     def _capture_failure_post(identity, channel, topic, body, **kw):
@@ -255,6 +258,23 @@ def _body():
         else:
             failed += 1
             print("FAIL %s receipt -> %r wanted %r" % (label, got, want))
+
+    # restart.sh drains on inflight, and until now handle_operator_tag never recorded itself, so a
+    # bridge run of any length read as "0 inflight" and was killed mid-run (2026-08-18, tag 617345854).
+    # The row must exist while runner.run is on the stack and be gone after, including down the
+    # raising path the stub takes, and the lane must reach runner.run or the seat gets no wake log.
+    bridge_lane = store.lane_key(1, "t", constants.BRIDGE_IDENTITY)
+    tagged = [lanes for lane_kw, lanes in inflight_during if lane_kw == bridge_lane]
+    if tagged and all(bridge_lane in lanes for lanes in tagged):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL bridge run not inflight during runner.run -> %r" % (inflight_during,))
+    if bridge_lane not in store.inflight_all():
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL bridge run left an inflight row behind")
 
     for i, (label, persona, identity) in enumerate(cases.OPERATOR_SPAWNS):
         got = spawns[i] if i < len(spawns) else None

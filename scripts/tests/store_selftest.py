@@ -90,6 +90,19 @@ def _body():
         failed += 1
         print("FAIL inflight_clear left a row")
 
+    for label, clear_id, survives in cases.INFLIGHT_GUARDED_CLEARS:
+        try:
+            inflight_add(lane, {"persona": "bridge", "message_id": 2})
+            inflight_clear(lane, message_id=clear_id)
+            if (lane in inflight_all()) == survives:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL guarded clear, %s -> present %r wanted %r"
+                      % (label, lane in inflight_all(), survives))
+        finally:
+            inflight_clear(lane)
+
     # state_summary against probe ledgers; the live loops/inflight/cost/kicks files are never
     # named here, so a selftest run cannot disturb what the operator rails read.
     probe_names = [cases.STATE_PROBE_LOOPS, cases.STATE_PROBE_INFLIGHT,

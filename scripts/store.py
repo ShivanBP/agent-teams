@@ -147,9 +147,17 @@ def inflight_add(lane, info=None):
     mutate("inflight", fn)
 
 
-def inflight_clear(lane):
+def inflight_clear(lane, message_id=None):
+    """Pop the row only if it is still ours. Operator tags take no lane lock, so two tags on one
+    topic run concurrently under the same lane key and the first to finish must not wipe the
+    second's row. A bare call pops whatever is there: the persona path holds the lane lock, so
+    its row can only be its own."""
     def fn(data):
-        data.pop(lane, None)
+        row = data.get(lane)
+        if row is None:
+            return
+        if message_id is None or row.get("message_id") == message_id:
+            data.pop(lane, None)
 
     mutate("inflight", fn)
 

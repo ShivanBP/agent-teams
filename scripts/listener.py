@@ -387,15 +387,16 @@ def handle_wake(identity, event, flag_holder_ids):
             flags = []
     model, effort = flags_to_overrides(flags)
 
+    # inflight is visible before the lane lock is even requested and before the receipt, so a
+    # waiter blocked on the lock can already see this wake (finding 2), and the drain gate cannot
+    # miss it in the round trip the receipt costs; cleared only after the lock is released.
+    # stream_id and topic ride along so the stall sweep can find this lane's loop without
+    # unparsing the key.
+    store.inflight_add(lane, {"persona": identity, "message_id": message_id, "stream_id": stream_id, "topic": topic})
     try:
         send_mod.react(identity, message_id, constants.EMOJI_RECEIPT)
     except (Exception, SystemExit):
         log.exception("react receipt failed for lane %s", lane)
-
-    # inflight is visible before the lane lock is even requested, so a waiter blocked on the lock
-    # can already see this wake (finding 2); cleared only after the lock is released. stream_id
-    # and topic ride along so the stall sweep can find this lane's loop without unparsing the key.
-    store.inflight_add(lane, {"persona": identity, "message_id": message_id, "stream_id": stream_id, "topic": topic})
     try:
         with store.lane_lock(lane):
             row = store.session_get(lane) or {}
@@ -574,6 +575,10 @@ def handle_operator_tag(event, mate_id):
     if loop is not None:
         loop_note = prompts.LOOP_NOTE.format(loop_id=loop["id"], n=loop["kicks"], budget=loop["budget"])
 
+    # the bridge run takes a lane like any wake: it is what restart.sh's drain gate polls, and
+    # what gives the seat a wake log for the stall sweep to read.
+    lane = store.lane_key(stream_id, topic, constants.BRIDGE_IDENTITY)
+
     record, _ = build_delta_record(constants.BRIDGE_IDENTITY, channel, topic, None)
     # the tag message is the id the seat opens a loop against: it is the header, never one of
     # Bridge's own posts.
@@ -585,10 +590,12 @@ def handle_operator_tag(event, mate_id):
         # lets the seat call send.py --as itself. "bridge" here is the rails.json key, not the
         # identity, so it stays literal under a BRIDGE_IDENTITY rename.
         rail = constants.rail_defaults("bridge")
+        store.inflight_add(lane, {"persona": constants.BRIDGE_IDENTITY, "message_id": message_id,
+                                  "stream_id": stream_id, "topic": topic, "provider": rail["provider"]})
         result = runner.run(constants.BRIDGE_IDENTITY, brief, provider=rail["provider"],
                             model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
-                            identity=constants.BRIDGE_IDENTITY)
+                            identity=constants.BRIDGE_IDENTITY, lane=lane)
         _append_cost(constants.BRIDGE_IDENTITY, topic, result, rail["model"], rail["effort"])
         # a reply follows its topic; resolve-then-reply must land inside the resolved topic,
         # not fork an unresolved twin (shares handle_wake's refetch helper, _post_at_current_location above).
@@ -599,6 +606,8 @@ def handle_operator_tag(event, mate_id):
     except (Exception, SystemExit) as exc:
         log.exception("bridge seat run failed for tag message %s", message_id)
         _post_operator_failure(prompts.BRIDGE_REPLY_FAILED, exc, channel, topic, message_id)
+    finally:
+        store.inflight_clear(lane, message_id=message_id)
 
 
 # --- stall sweep: a periodic thread pausing loops behind inflight rows that never wrote back -----

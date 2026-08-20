@@ -239,6 +239,15 @@ LANE_KEYS = [
     (1, "gate2 item9", "peter", "1:gate2 item9:peter"),
 ]
 
+# (label, message_id handed to inflight_clear, whether the row survives) against a row whose
+# message_id is 2. Operator tags take no lane lock, so two tags on one topic share a lane key:
+# a bare or matching clear pops, another run's id must not.
+INFLIGHT_GUARDED_CLEARS = [
+    ("other run's id", 1, True),
+    ("matching id", 2, False),
+    ("bare clear", None, False),
+]
+
 # (persona, model, session, effort, expected argv) for runner._build_cmd
 FAILURE_OUTPUTS = [
     ("", '{"error":"quota"}\n', '{"error":"quota"}'),

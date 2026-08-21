@@ -27,6 +27,8 @@ Tickets open in #maintenance or #setup and stay in the topic they opened in; des
 build and verification run in that one topic, no hand-off channel. #workbench is archived
 with its history intact.
 
+voice-connector takes one build topic at a time: one checkout, one live service, no worktrees.
+
 Before killing a non-Claude wake, read its per-lane tail under
 `~/.config/agent-team/logs/wakes/`; a partial transcript survives until that lane's next wake.
 
@@ -73,12 +75,14 @@ grant below is the one exception.
 
 Flag holders can select a provider (`-claude`, `-codex`, `-agy`, `-opencode`), a model
 (`-opus`, `-fable`), and an effort level (`-low`, `-mid`, `-high`, `-xtra`) for any wake.
-The current flag holders are Mate and John Fechter. The last explicit flag in each category
-wins, and providers stay sticky with the topic's session. Switching provider starts a fresh
-session. Default persona-provider-model-effort assignments live in
-`config/persona-matrix.json`. Flags from anyone else are stripped and ignored. The tracked
-`.example.json` is only a template; once the live file exists,
-edits to the example are ignored. Config is read once at listener start; after editing the
+The current flag holders are Mate and John Fechter, resolved from `AGENT_TEAM_MATE_EMAILS`.
+A post from the browser seat goes out as the bridge, which is not among them, so flags written
+there are stripped; adding bridge's bot email to that variable is what turns them on.
+The last explicit flag in each category wins, and providers stay sticky with the topic's
+session. Switching provider starts a fresh session. Default persona-provider-model-effort
+assignments live in `config/persona-matrix.json`. Flags from anyone else are stripped and
+ignored. The tracked `.example.json` is only a template; once the live file exists, edits to
+the example are ignored. Config is read once at listener start; after editing the
 live file, run `scripts/restart.sh`. Effort levels translate per provider; unsupported
 combinations such as `agy + xtra` are rejected.
 Arm a deferred restart only as
@@ -126,6 +130,16 @@ creator. Nothing here grants bridge reach over channels the operator made.
 
 --subscribe resolves the channel id before it acts. POST /users/me/subscriptions subscribes *or
 creates*, so without that lookup a mistyped channel name would quietly make a channel.
+
+The browser is bridge's fourth seat (2026-08-20): the claude.ai connector in
+`~/Projects/voice-connector` calls the verbs above through one argv into this repo's own
+read.py and send.py. One GitHub login gates every tool; the identity is pinned in the connector
+and is never a tool argument; claude.ai prompts Mate in the browser before each write call.
+Its dispatch tool runs Claude Code on this Mac at wake parity, granted by Mate 2026-08-20 in
+#setup: a verified login carries the same trust as a verified mention, so a dispatched run has
+a wake's reach, push and pull requests included, and the connector holds no tool fences of its
+own. What it keeps are a wake's ceilings, which are about spend and not trust: per-job budget,
+daily budget, job count, and a job timeout matching RUN_TIMEOUT.
 
 Read-only API GETs under your own zuliprc are open to everyone; writes go through send.py
 verbs only.

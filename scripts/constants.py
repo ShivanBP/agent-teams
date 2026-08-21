@@ -209,6 +209,7 @@ GIT_CMD_TIMEOUT = _num("GIT_CMD_TIMEOUT", 120, int)
 IDLE_QUEUE_TIMEOUT = _num("IDLE_QUEUE_TIMEOUT", 604800, int)  # seconds Zulip keeps an idle event queue
 REPLY_TRUNCATION_LIMIT = _num("REPLY_TRUNCATION_LIMIT", 4000, int)
 READ_LIMIT = _num("READ_LIMIT", 30, int)
+CROSS_CHANNEL_BODY_CHARS = _num("CROSS_CHANNEL_BODY_CHARS", 140, int)
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 CODEX_BIN = os.environ.get("CODEX_BIN", "/Applications/ChatGPT.app/Contents/Resources/codex")
 CODEX_MODEL = os.environ.get("CODEX_MODEL", HARNESS_DEFAULTS["codex"]["model"])

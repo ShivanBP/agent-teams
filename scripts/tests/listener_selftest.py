@@ -497,9 +497,12 @@ def _body():
             log.disabled = old_case_log_disabled
 
     progress_rows = {
-        "lane-text": {"persona": "bob", "stream_id": 1, "topic": "one", "ts": 700},
-        "lane-action": {"persona": "jan", "stream_id": 2, "topic": "two", "ts": 1000},
-        "lane-short": {"persona": "eve", "stream_id": 3, "topic": "three", "ts": 1100},
+        "lane-text": {"persona": "bob", "message_id": 10, "stream_id": 1,
+                      "topic": "one", "run_ts": 700},
+        "lane-action": {"persona": "jan", "message_id": 20, "stream_id": 2,
+                        "topic": "two", "run_ts": 1000},
+        "lane-short": {"persona": "eve", "message_id": 30, "stream_id": 3,
+                       "topic": "three", "ts": 600},
     }
     progress_events = []
     said = {"lane-text": "writing tests"}
@@ -510,7 +513,7 @@ def _body():
     old_post, old_update = send_mod.post, send_mod.update
     try:
         store.inflight_all = lambda: progress_rows
-        store.mutate = lambda name, fn: fn(progress_rows)
+        store.mutate = lambda name, fn: fn(progress_rows) or progress_rows
         runner.last_said = lambda lane: said.get(lane)
         runner.last_action = lambda lane: actions.get(lane)
 
@@ -543,9 +546,55 @@ def _body():
         failed += 1
         print("FAIL progress_sweep events=%r rows=%r" % (progress_events, progress_rows))
 
+    run_rows = {"lane": {"message_id": 7}}
+    old_mutate = store.mutate
+    try:
+        store.mutate = lambda name, fn: fn(run_rows)
+        mark_run_started("lane", message_id=6, now_ts=900)
+        mark_run_started("lane", message_id=7, now_ts=901)
+    finally:
+        store.mutate = old_mutate
+    if run_rows["lane"].get("run_ts") == 901:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL mark_run_started -> %r" % run_rows)
+
+    race_rows = {
+        "lane-race": {"persona": "bob", "message_id": 40, "stream_id": 4,
+                      "topic": "race", "run_ts": 700},
+    }
+    race_events = []
+    old_inflight, old_mutate = store.inflight_all, store.mutate
+    old_said, old_post, old_delete = runner.last_said, send_mod.post, send_mod.delete
+    try:
+        store.inflight_all = lambda: race_rows
+        store.mutate = lambda name, fn: fn(race_rows) or race_rows
+        runner.last_said = lambda lane: "finishing"
+
+        def _race_post(*args):
+            race_events.append(("post", args[3]))
+            race_rows.clear()
+            return 61
+
+        send_mod.post = _race_post
+        send_mod.delete = lambda persona, message_id: race_events.append(
+            ("delete", persona, message_id)) or message_id
+        progress_sweep(1000)
+    finally:
+        store.inflight_all, store.mutate = old_inflight, old_mutate
+        runner.last_said, send_mod.post, send_mod.delete = old_said, old_post, old_delete
+    expected_race = [("post", "Working, 5m: finishing"), ("delete", "bob", 61)]
+    if race_events == expected_race:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL progress cleanup race -> %r wanted %r" % (race_events, expected_race))
+
     finish_rows = {
-        "lane-delete": {"persona": "bob", "message_id": 11, "ts": 100, "progress_id": 51},
-        "lane-fallback": {"persona": "jan", "ts": 100, "progress_id": 52},
+        "lane-delete": {"persona": "bob", "message_id": 11,
+                        "run_ts": 100, "progress_id": 51},
+        "lane-fallback": {"persona": "jan", "run_ts": 100, "progress_id": 52},
     }
     finish_events = []
     old_inflight = store.inflight_all

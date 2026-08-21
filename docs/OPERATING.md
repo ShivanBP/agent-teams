@@ -65,6 +65,8 @@ sandboxing is given up, and the persona text plus the current brief carry the sc
 It is written down here so the cost stays visible.
 
 Personas can post, react, attach, and read, as themselves only (api.enforce_identity).
+The listener deletes a completed progress message through that persona's identity; the realm
+limits deletion to the identity's own message.
 Persona posts cannot wake other personas; bridge-issued kicks are the exception.
 Channel and topic management is Mate's job in the Zulip UI; the bridge's standing admin
 grant below is the one exception.

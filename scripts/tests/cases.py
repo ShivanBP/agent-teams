@@ -502,7 +502,8 @@ LAST_SAID_EVENTS = [
         "type": "agent_message", "text": "Codex line"}}, "Codex line"),
     ({"type": "text", "part": {"text": "OpenCode line"}}, "OpenCode line"),
     ({"event": "step_update", "step_update": {
-        "step_type": "agent_response", "state": "DONE"}}, None),
+        "step_type": "agent_response", "state": "ACTIVE", "text_delta": "Agy line"}},
+     "Agy line"),
 ]
 
 LAST_SAID_LOG = '\n'.join([
@@ -512,6 +513,12 @@ LAST_SAID_LOG = '\n'.join([
 ]) + '\n'
 LAST_SAID_EXPECTED = "latest line"
 LAST_SAID_MAX = 140
+LAST_SAID_AGY_LOG = '\n'.join([
+    '{"event":"step_update","step_update":{"step_index":4,"step_type":"checkpoint"}}',
+    '{"event":"step_update","step_update":{"step_index":5,"text_delta":"Agy "}}',
+    '{"event":"step_update","step_update":{"step_index":5,"text_delta":"line\\nmore"}}',
+]) + '\n'
+LAST_SAID_AGY_EXPECTED = "Agy line"
 
 JSONL_BACKGROUND = (
     'import subprocess, sys; print("fresh"); print("child err", file=sys.stderr); '

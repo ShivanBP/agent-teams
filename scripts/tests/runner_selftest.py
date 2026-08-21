@@ -378,6 +378,23 @@ def _body():
             constants.LOGS_DIR = Path(root)
             path = _wake_log_path(cases.LAST_ACTION_LANE)
             path.parent.mkdir(parents=True)
+            path.write_text(cases.LAST_SAID_AGY_LOG)
+            got = last_said(cases.LAST_ACTION_LANE)
+        finally:
+            constants.LOGS_DIR = old_logs
+        if got == cases.LAST_SAID_AGY_EXPECTED:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL last_said agy chunks -> %r wanted %r" %
+                  (got, cases.LAST_SAID_AGY_EXPECTED))
+
+    with tempfile.TemporaryDirectory() as root:
+        old_logs = constants.LOGS_DIR
+        try:
+            constants.LOGS_DIR = Path(root)
+            path = _wake_log_path(cases.LAST_ACTION_LANE)
+            path.parent.mkdir(parents=True)
             path.write_text(json.dumps({"type": "item.completed", "item": {
                 "type": "agent_message", "text": "x" * (cases.LAST_SAID_MAX + 1)}}) + "\n")
             got = last_said(cases.LAST_ACTION_LANE)

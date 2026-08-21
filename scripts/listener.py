@@ -259,15 +259,17 @@ def _resolve_user_ids(identity):
                         "flags and operator-rail checks stay off")
         else:
             payload = api.request(api.load(identity), "GET", "/api/v1/users")
-            if payload.get("result") == "success":
-                for user in payload.get("members", []):
-                    email = user.get("email")
-                    if email in holder_emails:
-                        holder_ids.add(user.get("user_id"))
-                        resolved_emails.add(email)
-                    if mate_email and email == mate_email:
-                        mate_id = user.get("user_id")
-                        mention = "@**%s**" % (user.get("full_name") or email.split("@")[0])
+            if payload.get("result") != "success":
+                log.error("could not resolve users for %s: %s", identity, payload.get("msg"))
+                return
+            for user in payload.get("members", []):
+                email = user.get("email")
+                if email in holder_emails:
+                    holder_ids.add(user.get("user_id"))
+                    resolved_emails.add(email)
+                if mate_email and email == mate_email:
+                    mate_id = user.get("user_id")
+                    mention = "@**%s**" % (user.get("full_name") or email.split("@")[0])
         missing = holder_emails - resolved_emails
         if missing:
             log.error("could not resolve flag-holder emails to user ids: %s",
@@ -284,13 +286,13 @@ def _resolve_user_ids(identity):
 def mate_user_id(identity=constants.BRIDGE_IDENTITY):
     """Resolve and cache the operator's Rail B id alongside the flag-holder id set."""
     _resolve_user_ids(identity)
-    return _USER_IDS["mate_id"]
+    return _USER_IDS.get("mate_id")
 
 
 def flag_holder_user_ids(identity=constants.BRIDGE_IDENTITY):
     """Resolve and cache the user ids whose per-message flags apply."""
     _resolve_user_ids(identity)
-    return _USER_IDS["flag_holder_ids"]
+    return _USER_IDS.get("flag_holder_ids", frozenset())
 
 
 def mate_mention():

@@ -16,6 +16,7 @@ def _body():
     import os
     import tempfile
     import time
+    import types
     from pathlib import Path
 
     import api
@@ -656,6 +657,146 @@ def _body():
     else:
         failed += 1
         print("FAIL sweep thread startup -> %r" % (got_threads,))
+
+    # A row left in inflight.json is a wake the last listener was killed mid-run: seen_set already
+    # covers its mention, so backfill's anchor skips it and the reply is never posted unless the
+    # replay reruns it (2026-08-18, the dropped mention Jan traced).
+    replay_persona = next(iter(personas.PERSONAS))
+    persona_lane = store.lane_key(1, "t", replay_persona)
+    bridge_row_lane = store.lane_key(2, "t", constants.BRIDGE_IDENTITY)
+    replay_calls = []
+    replay_anchors = []
+    replay_records = []
+
+    def _replay_message(cfg, method, path, params=None):
+        replay_anchors.append((params or {}).get("anchor"))
+        if replay_payload.get("result") != "success":
+            return replay_payload
+        return {"result": "success",
+                "messages": [{"id": (params or {}).get("anchor"), "stream_id": 1, "subject": "t",
+                              "display_recipient": "c", "sender_email": "mate@example.com",
+                              "content": "go", "flags": []}]}
+
+    def _record_wake(identity, event, flag_holder_ids):
+        replay_calls.append(("wake", identity, (event["message"]).get("id")))
+        replay_records.append(sorted(store.inflight_all()))
+
+    def _record_tag(event, mate_id):
+        replay_calls.append(("tag", constants.BRIDGE_IDENTITY, (event["message"]).get("id")))
+        replay_records.append(sorted(store.inflight_all()))
+
+    replay_inflight_rows = {}
+    replay_payload = {"result": "success"}
+    replay_logs = []
+
+    class _CaptureLog(logging.Handler):
+        def emit(self, record):
+            replay_logs.append((record.levelname, record.getMessage()))
+
+    capture = _CaptureLog()
+    old_replay = (store.inflight_all, store.inflight_clear, api.load, api.request,
+                  handle_wake, handle_operator_tag, log.disabled, log.propagate)
+    try:
+        log.disabled = False
+        log.propagate = False
+        log.addHandler(capture)
+        store.inflight_all = lambda: dict(replay_inflight_rows)
+        store.inflight_clear = lambda lane, message_id=None: replay_inflight_rows.pop(lane, None)
+        api.load = lambda identity: identity
+        api.request = _replay_message
+        globals()["handle_wake"] = _record_wake
+        globals()["handle_operator_tag"] = _record_tag
+
+        replay_inflight_rows.update({
+            persona_lane: {"persona": replay_persona, "message_id": 100, "stream_id": 1, "topic": "t"},
+            bridge_row_lane: {"persona": constants.BRIDGE_IDENTITY, "message_id": 200,
+                              "stream_id": 2, "topic": "t"},
+        })
+        replay_inflight("%s" % replay_persona, 7, frozenset(), frozenset())
+        popped_first = replay_records == [[bridge_row_lane]]
+        left_behind = sorted(replay_inflight_rows)
+
+        first_calls = list(replay_calls)
+        del replay_calls[:]
+        replay_payload = {"result": "error", "msg": "gone"}
+        replay_inflight_rows[persona_lane] = {"persona": replay_persona, "message_id": 100}
+        replay_inflight(replay_persona, 7, frozenset(), frozenset())
+        errors = [msg for level, msg in replay_logs if level == "ERROR"]
+    finally:
+        log.removeHandler(capture)
+        (store.inflight_all, store.inflight_clear, api.load, api.request) = old_replay[:4]
+        globals()["handle_wake"], globals()["handle_operator_tag"] = old_replay[4:6]
+        log.disabled, log.propagate = old_replay[6:8]
+
+    if (first_calls == [("wake", replay_persona, 100)] and replay_calls == []
+            and replay_anchors == [100, 100] and popped_first
+            and left_behind == [bridge_row_lane] and not replay_inflight_rows.get(persona_lane)
+            and len(errors) == 1 and "100" in errors[0]):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL inflight replay first=%r after=%r anchors=%r popped_first=%r left=%r errors=%r" %
+              (first_calls, replay_calls, replay_anchors, popped_first, left_behind, errors))
+
+    # Both catch-up paths run the same dispatcher, or a fix to one silently misses the other.
+    dispatched = []
+    backfill_seen = []
+    old_backfill = (api.load, api.request, store.seen_get, store.seen_set, _dispatch, log.disabled)
+    try:
+        log.disabled = True
+        api.load = lambda identity: identity
+        api.request = lambda *a, **k: {"result": "success", "messages": [{"id": 8}, {"id": 9}]}
+        store.seen_get = lambda identity: 7
+        store.seen_set = lambda identity, message_id: backfill_seen.append((identity, message_id))
+        globals()["_dispatch"] = lambda *args: dispatched.append(args)
+        backfill(replay_persona, 7, frozenset(), frozenset())
+    finally:
+        (api.load, api.request, store.seen_get, store.seen_set) = old_backfill[:4]
+        globals()["_dispatch"] = old_backfill[4]
+        log.disabled = old_backfill[5]
+    if (dispatched == [(replay_persona, {"id": 8}, 7, frozenset(), frozenset()),
+                       (replay_persona, {"id": 9}, 7, frozenset(), frozenset())]
+            and backfill_seen == [(replay_persona, 9)]):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL backfill dispatch -> %r seen=%r" % (dispatched, backfill_seen))
+
+    # run_identity drives both catch-up paths, replay first, before the event queue opens: an
+    # unwired replay_inflight passes every test above and still drops the mention.
+    startup = []
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def call_on_each_event(self, cb, **kwargs):
+            startup.append(("listening",))
+
+    fake_zulip = types.ModuleType("zulip")
+    fake_zulip.Client = _FakeClient
+    old_startup = (api.me, mate_user_id, flag_holder_user_ids, replay_inflight, backfill,
+                   log.disabled)
+    try:
+        log.disabled = True
+        sys.modules["zulip"] = fake_zulip
+        api.me = lambda identity: {"user_id": 1}
+        globals()["mate_user_id"] = lambda: 7
+        globals()["flag_holder_user_ids"] = lambda: frozenset()
+        globals()["replay_inflight"] = lambda *a: startup.append(("replay",) + a[:1])
+        globals()["backfill"] = lambda *a: startup.append(("backfill",) + a[:1])
+        run_identity(replay_persona, frozenset())
+    finally:
+        sys.modules.pop("zulip", None)
+        api.me = old_startup[0]
+        globals()["mate_user_id"], globals()["flag_holder_user_ids"] = old_startup[1:3]
+        globals()["replay_inflight"], globals()["backfill"] = old_startup[3:5]
+        log.disabled = old_startup[5]
+    if startup == [("replay", replay_persona), ("backfill", replay_persona), ("listening",)]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL run_identity catch-up order -> %r" % (startup,))
 
     digest_calls = []
     old_stream_id, old_refresh = api.stream_id, digest.refresh_topic

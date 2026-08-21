@@ -18,4 +18,5 @@ config/model-effort-defaults.json
 config/rails.json
 config/channels.json
 config/domains.json
+config/status.json
 plugins/

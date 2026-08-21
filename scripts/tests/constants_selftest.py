@@ -144,6 +144,19 @@ def _body():
         failed += 1
         print("FAIL domains example does not load: %s" % exc)
 
+    try:
+        status = json.loads(STATUS_EXAMPLE_PATH.read_text())
+        if set(status) == {"channel", "domain_channel"} \
+                and all(isinstance(value, str) and value for value in status.values()) \
+                and "{channel}" in status["domain_channel"]:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL status example keys or values are invalid")
+    except (OSError, ValueError) as exc:
+        failed += 1
+        print("FAIL status example does not load: %s" % exc)
+
     for channel, expected in cases.DOMAIN_ROOTS:
         got = domain_root(channel, cases.DOMAIN_MAP)
         if got == expected:

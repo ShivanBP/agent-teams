@@ -1,5 +1,5 @@
 """Tunables and paths. Values built with _num() or os.environ.get() are overridable by an env
-var of the same name; RESOLVED_PREFIX and the ATTACH_* values below are fixed, not wrapped."""
+var of the same name."""
 
 import argparse
 import json
@@ -23,6 +23,8 @@ CHANNELS_PATH = REPO_DIR / "config" / "channels.json"
 CHANNELS_EXAMPLE_PATH = REPO_DIR / "config" / "channels.example.json"
 DOMAINS_PATH = REPO_DIR / "config" / "domains.json"
 DOMAINS_EXAMPLE_PATH = REPO_DIR / "config" / "domains.example.json"
+STATUS_PATH = REPO_DIR / "config" / "status.json"
+STATUS_EXAMPLE_PATH = REPO_DIR / "config" / "status.example.json"
 
 
 def _load_json_object(path, example_path, label):
@@ -74,12 +76,17 @@ def _load_domains():
     return _load_json_object(DOMAINS_PATH, DOMAINS_EXAMPLE_PATH, "domains")
 
 
+def _load_status():
+    return _load_json_object(STATUS_PATH, STATUS_EXAMPLE_PATH, "status")
+
+
 _MATRIX = _load_matrix()
 HARNESS_DEFAULTS = _load_harness_defaults()
 MODEL_EFFORT_DEFAULTS = _load_model_effort_defaults()
 _RAILS = _load_rails()
 _CHANNELS = _load_channels()
 _DOMAINS = _load_domains()
+_STATUS = _load_status()
 
 _EFFORT_SCALE = {
     "low": {"claude": "low", "codex": "low", "opencode": "low", "agy": "low"},
@@ -198,11 +205,11 @@ AGENT_TEAM_MATE_EMAILS = _mate_emails(
 BRIDGE_IDENTITY = os.environ.get("BRIDGE_IDENTITY", "bridge")
 LAUNCHD_LABEL = os.environ.get("AGENT_TEAM_LAUNCHD_LABEL", "com.agent-team")
 EMOJI_RECEIPT = os.environ.get("EMOJI_RECEIPT", "eyes")
-ALERTS_TOPIC = os.environ.get("ALERTS_TOPIC", "alerts")
-BOARD_TOPIC = os.environ.get("BOARD_TOPIC", "board")
-DOMAIN_STATUS_CHANNEL = os.environ.get("DOMAIN_STATUS_CHANNEL", "{channel}-status")
+ALERTS_TOPIC = "alerts"
+BOARD_TOPIC = "board"
+DOMAIN_STATUS_CHANNEL = _STATUS["domain_channel"]
 DOMAIN_BOARD_STATE = os.environ.get("DOMAIN_BOARD_STATE", "board.json")
-STATUS_STREAM = os.environ.get("STATUS_STREAM", "status")
+STATUS_STREAM = _STATUS["channel"]
 RUN_TIMEOUT = _num("RUN_TIMEOUT", 1800, int)
 GIT_LOCK_WAIT = _num("GIT_LOCK_WAIT", 120, int)
 GIT_CMD_TIMEOUT = _num("GIT_CMD_TIMEOUT", 120, int)

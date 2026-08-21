@@ -587,7 +587,7 @@ def wants_worktree(identity, exists, build=None, join=None):
 
 _WORKTREE_LINKS = (".venv", "config/persona-matrix.json", "config/harness-defaults.json",
                    "config/model-effort-defaults.json", "config/rails.json",
-                   "config/channels.json", "config/domains.json")
+                   "config/channels.json", "config/domains.json", "config/status.json")
 
 
 def _worktree_add(path, branch):

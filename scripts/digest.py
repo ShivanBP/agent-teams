@@ -216,7 +216,7 @@ def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=No
 
 
 def sweep_once(as_name=constants.BRIDGE_IDENTITY, streams_fn=None, stream_id_fn=None,
-               topics_fn=None, load_fn=None, refresh_fn=None):
+               topics_fn=None, load_fn=None, refresh_fn=None, groups=None):
     streams_fn = streams_fn or api.visible_streams
     stream_id_fn = stream_id_fn or api.stream_id
     topics_fn = topics_fn or api.topics
@@ -225,7 +225,7 @@ def sweep_once(as_name=constants.BRIDGE_IDENTITY, streams_fn=None, stream_id_fn=
     cached = load_fn("digests")
     parked = load_fn(constants.PARKED_STATE)
     refreshed = []
-    board_channels = constants.board_channels()
+    board_channels = constants.board_channels(groups)
     for channel in streams_fn(as_name):
         if channel not in board_channels:
             continue

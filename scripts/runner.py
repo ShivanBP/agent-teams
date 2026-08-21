@@ -107,11 +107,24 @@ def _said_text(event):
             return item.get("text")
     if event_type == "text":
         return (event.get("part") or {}).get("text")
+    if event.get("event") == "step_update":
+        return (event.get("step_update") or {}).get("text_delta")
     return None
 
 
 def last_said(lane):
-    for event in reversed(_tail_events(lane)):
+    events = _tail_events(lane)
+    agy_step = next((
+        (event.get("step_update") or {}).get("step_index")
+        for event in reversed(events)
+        if _said_text(event) and event.get("event") == "step_update"
+    ), None)
+    if agy_step is not None:
+        text = "".join(
+            _said_text(event) or "" for event in events
+            if (event.get("step_update") or {}).get("step_index") == agy_step)
+        return text.strip().splitlines()[0][:140] if text.strip() else None
+    for event in reversed(events):
         text = _said_text(event)
         if not isinstance(text, str) or not text.strip():
             continue

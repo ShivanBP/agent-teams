@@ -419,6 +419,7 @@ def handle_wake(identity, event, flag_holder_ids):
                     identity, provider, model, effort)
                 log.info("running %s lane=%s provider=%s model=%s effort=%s resume=%s",
                          identity, lane, provider, run_model, run_effort, bool(session_id))
+                mark_run_started(lane)
                 result = runner.run(identity, prompt, provider=provider, model=run_model,
                                     effort=run_effort, session=session_id,
                                     cwd=run_cwd, lane=lane)
@@ -593,6 +594,7 @@ def handle_operator_tag(event, mate_id):
         rail = constants.rail_defaults("bridge")
         store.inflight_add(lane, {"persona": constants.BRIDGE_IDENTITY, "message_id": message_id,
                                   "stream_id": stream_id, "topic": topic, "provider": rail["provider"]})
+        mark_run_started(lane, message_id=message_id)
         result = runner.run(constants.BRIDGE_IDENTITY, brief, provider=rail["provider"],
                             model=rail["model"],
                             effort=constants.translate_effort(rail["provider"], rail["effort"]),
@@ -664,16 +666,25 @@ def stalled_wake(lane, now_ts, run=subprocess.run, own_pid=os.getpid):
 
 
 def _progress_age(info, now_ts, rounded):
-    age_s = max(0, now_ts - info.get("ts", now_ts))
+    age_s = max(0, now_ts - info.get("run_ts", now_ts))
     if rounded:
         step_s = constants.PROGRESS_MIN * 60
         age_s = (age_s // step_s) * step_s
     return monitor.format_age(age_s)
 
 
+def mark_run_started(lane, message_id=None, now_ts=None):
+    def fn(data):
+        info = data.get(lane)
+        if info is not None and (message_id is None or info.get("message_id") == message_id):
+            info["run_ts"] = time.time() if now_ts is None else now_ts
+
+    store.mutate("inflight", fn)
+
+
 def progress_sweep(now_ts):
     for lane, info in list(store.inflight_all().items()):
-        started = info.get("ts")
+        started = info.get("run_ts")
         if started is None or now_ts - started < constants.PROGRESS_MIN * 60:
             continue
         said = runner.last_said(lane) or runner.last_action(lane) or prompts.BOARD_UNKNOWN
@@ -682,7 +693,8 @@ def progress_sweep(now_ts):
         if info.get("progress_body") == body:
             continue
         try:
-            if info.get("progress_id") is None:
+            posting = info.get("progress_id") is None
+            if posting:
                 message_id = send_mod.post(
                     info["persona"], info["stream_id"], info["topic"], body)
             else:
@@ -691,12 +703,33 @@ def progress_sweep(now_ts):
             log.exception("failed to update progress for lane %s", lane)
             continue
 
-        def fn(data, lane=lane, message_id=message_id, body=body):
-            if lane in data:
-                data[lane]["progress_id"] = message_id
-                data[lane]["progress_body"] = body
+        def fn(data, lane=lane, message_id=message_id, body=body, expected=info):
+            current = data.get(lane)
+            if (current is not None
+                    and current.get("message_id") == expected.get("message_id")
+                    and current.get("run_ts") == expected.get("run_ts")):
+                current["progress_id"] = message_id
+                current["progress_body"] = body
 
-        store.mutate("inflight", fn)
+        updated = store.mutate("inflight", fn).get(lane) or {}
+        if (posting and (updated.get("message_id") != info.get("message_id")
+                         or updated.get("run_ts") != info.get("run_ts")
+                         or updated.get("progress_id") != message_id)):
+            _finish_progress_info(lane, info, message_id, now_ts)
+
+
+def _finish_progress_info(lane, info, progress_id, now_ts):
+    try:
+        send_mod.delete(info["persona"], progress_id)
+        return
+    except (Exception, SystemExit):
+        log.exception("failed to delete progress for lane %s; marking done", lane)
+    try:
+        body = prompts.PROGRESS_DONE.format(
+            age=_progress_age(info, now_ts, rounded=False))
+        send_mod.update(info["persona"], progress_id, body)
+    except (Exception, SystemExit):
+        log.exception("failed to mark progress done for lane %s", lane)
 
 
 def finish_progress(lane, message_id=None):
@@ -706,17 +739,7 @@ def finish_progress(lane, message_id=None):
     progress_id = info.get("progress_id")
     if progress_id is None:
         return
-    try:
-        send_mod.delete(info["persona"], progress_id)
-        return
-    except (Exception, SystemExit):
-        log.exception("failed to delete progress for lane %s; marking done", lane)
-    try:
-        body = prompts.PROGRESS_DONE.format(
-            age=_progress_age(info, time.time(), rounded=False))
-        send_mod.update(info["persona"], progress_id, body)
-    except (Exception, SystemExit):
-        log.exception("failed to mark progress done for lane %s", lane)
+    _finish_progress_info(lane, info, progress_id, time.time())
 
 
 def stall_sweep_once(now_ts=None):

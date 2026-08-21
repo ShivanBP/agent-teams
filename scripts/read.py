@@ -66,7 +66,7 @@ def render(messages, site=None, ids=False):
             stamp=stamp, sender=msg.get("sender_full_name", "?"),
             body=indent(msg.get("content", "")))
         if ids:
-            line += " #%s" % msg["id"]
+            line += prompts.MESSAGE_ID_SUFFIX.format(message_id=msg["id"])
         if site:
             line += "\n    " + api.permalink(
                 site, msg.get("stream_id"), msg.get("display_recipient", ""),
@@ -80,7 +80,7 @@ def render_cross_channel(messages, site, ids=False):
     lines = [prompts.RECORD_HEADER]
     for msg in sorted(messages, key=lambda row: row["timestamp"], reverse=True):
         stamp = datetime.datetime.fromtimestamp(msg["timestamp"]).strftime("%Y-%m-%d %H:%M")
-        body = " ".join(str(msg.get("content", "")).split())[:140]
+        body = " ".join(str(msg.get("content", "")).split())[:constants.CROSS_CHANNEL_BODY_CHARS]
         lines.append(prompts.CROSS_CHANNEL_RECORD_LINE.format(
             stamp=stamp,
             channel=msg.get("display_recipient", "?"),
@@ -91,7 +91,7 @@ def render_cross_channel(messages, site, ids=False):
                 site, msg.get("stream_id"), msg.get("display_recipient", ""),
                 msg.get("subject", ""), msg["id"],
             ),
-            message_id=" #%s" % msg["id"] if ids else "",
+            message_id=prompts.MESSAGE_ID_SUFFIX.format(message_id=msg["id"]) if ids else "",
         ))
     return "\n".join(lines)
 

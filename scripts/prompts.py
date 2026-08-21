@@ -10,6 +10,7 @@ RECORD_LINE = "[{stamp}] {sender}: {body}"
 CROSS_CHANNEL_RECORD_LINE = "[{stamp}] #{channel} > {topic}  {sender}: {body} {url}{message_id}"
 CHANNEL_LIST_LINE = "#{name}: {description}"
 TOPIC_LIST_LINE = "#{channel} > {topic}"
+MESSAGE_ID_SUFFIX = " #{message_id}"
 
 ATTACH_OUTSIDE_ROOTS = "[attach refused: {path} is outside the allowed roots]"
 ATTACH_DOT_NAME = "[attach refused: {path} is a dot-name file]"

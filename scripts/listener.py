@@ -400,6 +400,7 @@ def handle_wake(identity, event, flag_holder_ids):
     except (Exception, SystemExit):
         log.exception("react receipt failed for lane %s", lane)
     try:
+        after_post = None
         with store.lane_lock(lane):
             row = store.session_get(lane) or {}
             record_anchor = row.get("record_anchor")
@@ -453,19 +454,22 @@ def handle_wake(identity, event, flag_holder_ids):
                 except (Exception, SystemExit):
                     log.exception("failed to post the wake-failure note for lane %s", lane)
             else:
-                try:
-                    refresh_topic_digest(identity, post_channel, post_topic)
-                except (Exception, SystemExit):
-                    log.exception("topic digest refresh failed for lane %s", lane)
-                # Rail A: only after the reply landed, and its own failures never read back as a
-                # failed wake (they are logged and swallowed inside handle_rail_a itself). Current
-                # topic goes to the loop lookup too, so a rename doesn't miss the loop.
-                try:
-                    handle_rail_a(stream_id, post_channel, post_topic, record, result.reply)
-                except (Exception, SystemExit) as exc:
-                    log.exception("rail A continuation check failed for lane %s", lane)
-                    _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc,
-                                           post_channel, post_topic)
+                after_post = (post_channel, post_topic, record, result.reply)
+        if after_post is not None:
+            post_channel, post_topic, record, reply = after_post
+            try:
+                refresh_topic_digest(identity, post_channel, post_topic)
+            except (Exception, SystemExit):
+                log.exception("topic digest refresh failed for lane %s", lane)
+            # Rail A: only after the reply landed, and its own failures never read back as a
+            # failed wake (they are logged and swallowed inside handle_rail_a itself). Current
+            # topic goes to the loop lookup too, so a rename doesn't miss the loop.
+            try:
+                handle_rail_a(stream_id, post_channel, post_topic, record, reply)
+            except (Exception, SystemExit) as exc:
+                log.exception("rail A continuation check failed for lane %s", lane)
+                _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc,
+                                       post_channel, post_topic)
     finally:
         finish_progress(lane)
         store.inflight_clear(lane)

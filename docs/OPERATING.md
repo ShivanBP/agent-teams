@@ -102,6 +102,9 @@ the message is fresh, and the topic is unresolved before the seat wakes at all.
 
 send.py --resolve and --move-to CHANNEL are bridge-only verbs on top of that grant (topic
 naming convention batch, 2026-08-12); every other identity is refused before any API call.
+Both refuse a status channel outright, bridge included (browser Zulip seat, 2026-08-20): the
+never-resolved rule was prose in a help string until then, so any seat could still spend the
+call.
 Read-only API GETs under your own zuliprc are open to everyone; writes go through send.py
 verbs only.
 

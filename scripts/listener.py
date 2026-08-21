@@ -929,7 +929,10 @@ def run_identity(identity, persona_emails):
             if identity == constants.BRIDGE_IDENTITY:
                 # Advances the same seen-id ledger backfill() reads, so a later restart's
                 # anchor is this tag, not None (which would fetch nothing and re-open the gap).
-                store.seen_set(identity, msg.get("id"))
+                try:
+                    store.seen_set(identity, msg.get("id"))
+                except (Exception, SystemExit):
+                    log.exception("failed to record seen id for identity %s", identity)
                 threading.Thread(
                     target=operator_tag_worker,
                     args=(event, mate_user_id()),
@@ -938,7 +941,10 @@ def run_identity(identity, persona_emails):
                 ).start()
             return
         msg_id = msg.get("id")
-        store.seen_set(identity, msg_id)
+        try:
+            store.seen_set(identity, msg_id)
+        except (Exception, SystemExit):
+            log.exception("failed to record seen id for identity %s", identity)
         if is_persona_sender(msg.get("sender_email"), persona_emails):
             log.info("skip wake: persona sender mentioned %s on message %s", identity, msg_id)
             return

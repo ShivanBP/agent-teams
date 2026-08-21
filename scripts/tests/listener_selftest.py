@@ -197,6 +197,60 @@ def _body():
         _USER_IDS.clear()
         _USER_IDS.update(saved_resolution[4])
 
+    errors = []
+
+    class _UserLogCapture(logging.Handler):
+        def emit(self, record):
+            errors.append(record.getMessage())
+
+    user_capture = _UserLogCapture()
+    saved_retry = (api.load, api.request, constants.AGENT_TEAM_MATE_EMAIL,
+                   constants.AGENT_TEAM_MATE_EMAILS, dict(_USER_IDS), log.disabled)
+    retry_rows = []
+    try:
+        log.disabled = False
+        log.addHandler(user_capture)
+        constants.AGENT_TEAM_MATE_EMAIL = "mate@example.com"
+        constants.AGENT_TEAM_MATE_EMAILS = frozenset({"mate@example.com"})
+        api.load = lambda identity: identity
+        for label, accessor in (
+                ("mate", mate_user_id),
+                ("holders", flag_holder_user_ids)):
+            _USER_IDS.clear()
+            replies = [
+                {"result": "error", "msg": "temporary users failure"},
+                {"result": "success", "members": [{
+                    "email": "mate@example.com", "user_id": 7, "full_name": "Mate"}]},
+            ]
+            errors = []
+            api.request = lambda *args: replies.pop(0)
+            try:
+                first = accessor("selftest")
+            except Exception as exc:
+                first = exc
+            first_cache = dict(_USER_IDS)
+            second = accessor("selftest")
+            retry_rows.append((label, first, first_cache, second, errors))
+    finally:
+        log.removeHandler(user_capture)
+        api.load, api.request = saved_retry[:2]
+        constants.AGENT_TEAM_MATE_EMAIL = saved_retry[2]
+        constants.AGENT_TEAM_MATE_EMAILS = saved_retry[3]
+        _USER_IDS.clear()
+        _USER_IDS.update(saved_retry[4])
+        log.disabled = saved_retry[5]
+    expected_retries = [
+        ("mate", None, {}, 7, ["could not resolve users for selftest: temporary users failure"]),
+        ("holders", frozenset(), {}, frozenset({7}),
+         ["could not resolve users for selftest: temporary users failure"]),
+    ]
+    if retry_rows == expected_retries:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL failed user resolution retry -> %r wanted %r" %
+              (retry_rows, expected_retries))
+
     # Both rails driven for real with runner.run stubbed; the stub raises so no cost row is written.
     class _Stop(Exception):
         pass

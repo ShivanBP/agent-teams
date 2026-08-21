@@ -245,5 +245,30 @@ def _body():
             print("FAIL board_message %s -> %r doors %r, wanted %r doors %r" %
                   (label, got, doors, expected, want_doors))
 
+    doors = []
+    saved_window = api.window
+    try:
+        api.window = lambda name: 10000
+        globals()["post"] = lambda a, c, t, b, enforce=True: doors.append(
+            ("post", b, enforce)) or 100
+
+        def expired_update(a, mid, b, enforce=True):
+            doors.append(("update", b, enforce))
+            raise SystemExit("PATCH /messages (content) failed: %s" % _EDIT_LIMIT)
+
+        globals()["update"] = expired_update
+        globals()["current_content"] = lambda a, mid: "old"
+        got = board_message("board-bot", "status", "a board", "new", 99)
+    finally:
+        globals()["post"], globals()["update"] = old_post, old_update
+        globals()["current_content"] = old_current
+        api.window = saved_window
+    if got == (100, True) and doors == [
+            ("update", "new", False), ("post", "new", False)]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL board_message expired edit -> %r doors %r" % (got, doors))
+
     print("send.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

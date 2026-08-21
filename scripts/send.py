@@ -14,6 +14,7 @@ ATTACH_LINE = re.compile(r"^[ \t]*\[attach:[ \t]*(.+?)[ \t]*\][ \t]*$")
 
 ZWSP = "\u200b"
 _WILDCARD = re.compile(r"@(_?)\*\*(all|everyone|channel|topic|stream)\*\*")
+_EDIT_LIMIT = "The time limit for editing this message has passed"
 
 
 def mention_pattern(names):
@@ -222,7 +223,12 @@ def board_message(as_name, channel, topic, body, message_id=None):
     live = current_content(as_name, message_id)
     if live is not None and live.strip() == _strip_and_guard(body, as_name).strip():
         return int(message_id), False
-    return update(as_name, message_id, body, enforce=False), True
+    try:
+        return update(as_name, message_id, body, enforce=False), True
+    except SystemExit as exc:
+        if _EDIT_LIMIT not in str(exc):
+            raise
+        return post(as_name, channel, topic, body, enforce=False), True
 
 
 def verb_allowed(as_name):

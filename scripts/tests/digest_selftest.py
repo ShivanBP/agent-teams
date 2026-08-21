@@ -13,6 +13,8 @@ def run(module):
 
 def _body():
     import datetime
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
 
     import constants
     import tests.cases as cases
@@ -161,6 +163,34 @@ def _body():
     else:
         failed += 1
         print("FAIL refresh_topic -> %r state=%r" % (refreshed, state))
+
+    original_state_dir = store.STATE_DIR
+    with TemporaryDirectory() as temp_dir:
+        store.STATE_DIR = Path(temp_dir)
+        try:
+            seed = dict(cases.DIGEST_PREVIOUS, anchor_id=50)
+            store.mutate("digests", lambda data: data.update({"7:topic": seed}))
+            lower = refresh_topic(
+                "bob", 7, "setup", "topic",
+                fetch_fn=lambda *args: (cases.DIGEST_MESSAGES, 40, 0),
+                model_fn=lambda previous, messages: cases.DIGEST_MODEL,
+                now_ts=1234)
+            lower_anchor = store.load("digests")["7:topic"]["anchor_id"]
+            higher = refresh_topic(
+                "bob", 7, "setup", "topic",
+                fetch_fn=lambda *args: (cases.DIGEST_MESSAGES, 60, 0),
+                model_fn=lambda previous, messages: cases.DIGEST_MODEL,
+                now_ts=1234)
+            higher_anchor = store.load("digests")["7:topic"]["anchor_id"]
+        finally:
+            store.STATE_DIR = original_state_dir
+    if lower["anchor_id"] == 40 and lower_anchor == 50 \
+            and higher["anchor_id"] == 60 and higher_anchor == 60:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL refresh_topic anchor order -> lower=%r stored=%r higher=%r stored=%r" %
+              (lower, lower_anchor, higher, higher_anchor))
 
     forced_fetches, forced_models = [], []
     refresh_topic(

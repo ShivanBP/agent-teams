@@ -13,6 +13,8 @@ Seed set, revised when Zulip teaches otherwise:
 - #status > "alerts" is the stall sweep's own topic: listener.py posts there when it pauses
   a loop behind a stalled inflight row, or when a stall has no loop to pause.
 - #status > "board" is the live lane and todo overview, edited in place by the stall sweep.
+- A restart replays the inflight rows it finds: a wake killed mid-run runs again from its
+  mention, once, logged as `replay:`.
 - The wake that did the work posts its own status line through send.py. No wake exists
   just to update status.
 - Latest post wins. Old status posts are never edited.

@@ -786,7 +786,45 @@ def operator_tag_worker(event, mate_id):
         log.exception("unhandled error handling operator tag on message %s", (event.get("message") or {}).get("id"))
 
 
-# --- catch-up: backfill mentions missed while the daemon was down --------------------------------
+# --- catch-up: replay killed wakes, then backfill mentions missed while the daemon was down ------
+
+def _dispatch(identity, msg, mate_id, flag_holder_ids, persona_emails):
+    """One mention, re-run off an API payload rather than an event. Shared by backfill and
+    replay_inflight so the two catch-up paths cannot drift apart."""
+    if identity in personas.PERSONAS and is_persona_sender(msg.get("sender_email"), persona_emails):
+        log.info("skip wake: persona sender mentioned %s on message %s", identity, msg.get("id"))
+        return
+    fake_event = {"type": "message", "message": dict(msg, flags=list(set(msg.get("flags", [])) | {"mentioned"}))}
+    try:
+        if identity == constants.BRIDGE_IDENTITY:
+            handle_operator_tag(fake_event, mate_id)
+        else:
+            handle_wake(identity, fake_event, flag_holder_ids)
+    except (Exception, SystemExit):
+        log.exception("catch-up wake failed for %s message %s", identity, msg.get("id"))
+
+
+def replay_inflight(identity, mate_id, flag_holder_ids, persona_emails):
+    """Rows left in inflight.json by a listener that died are wakes killed mid-run: refetch each
+    mention and run it again. seen_set already covers them, so backfill never will. Each row is
+    popped before its replay, so a replay that dies leaves one fresh row, not a pile."""
+    rows = [(lane, row) for lane, row in store.inflight_all().items()
+            if row.get("persona") == identity]
+    for lane, row in rows:
+        msg_id = row.get("message_id")
+        store.inflight_clear(lane, message_id=msg_id)
+        payload = api.request(api.load(identity), "GET", "/api/v1/messages", {
+            "anchor": msg_id, "num_before": 0, "num_after": 0, "include_anchor": True,
+            "narrow": [{"operator": "is", "operand": "mentioned"}], "apply_markdown": False,
+        })
+        messages = payload.get("messages", []) if payload.get("result") == "success" else []
+        if not messages:
+            log.error("replay: inflight message %s for %s could not be refetched; dropped, "
+                      "tag again by hand", msg_id, identity)
+            continue
+        log.info("replay: %s rerunning mention %s left inflight by the last listener", identity, msg_id)
+        _dispatch(identity, messages[0], mate_id, flag_holder_ids, persona_emails)
+
 
 def backfill(identity, mate_id, flag_holder_ids, persona_emails):
     """Covers personas and the bridge identity: a queue re-registration gap can drop a Rail B
@@ -810,17 +848,7 @@ def backfill(identity, mate_id, flag_holder_ids, persona_emails):
         return
     messages = payload.get("messages", [])
     for msg in messages:
-        if identity in personas.PERSONAS and is_persona_sender(msg.get("sender_email"), persona_emails):
-            log.info("skip wake: persona sender mentioned %s on message %s", identity, msg.get("id"))
-            continue
-        fake_event = {"type": "message", "message": dict(msg, flags=list(set(msg.get("flags", [])) | {"mentioned"}))}
-        try:
-            if identity == constants.BRIDGE_IDENTITY:
-                handle_operator_tag(fake_event, mate_id)
-            else:
-                handle_wake(identity, fake_event, flag_holder_ids)
-        except (Exception, SystemExit):
-            log.exception("backfill wake failed for %s message %s", identity, msg.get("id"))
+        _dispatch(identity, msg, mate_id, flag_holder_ids, persona_emails)
     if messages:
         store.seen_set(identity, messages[-1]["id"])
 
@@ -836,6 +864,12 @@ def run_identity(identity, persona_emails):
     flag_holder_ids = flag_holder_user_ids()
 
     if identity in personas.PERSONAS or identity == constants.BRIDGE_IDENTITY:
+        # Before backfill: these mentions are already past seen_set, so backfill's anchor skips
+        # them. No wake of this identity is live yet, so popping rows takes no lane lock.
+        try:
+            replay_inflight(identity, mate_id, flag_holder_ids, persona_emails)
+        except Exception:
+            log.exception("inflight replay crashed for %s", identity)
         try:
             backfill(identity, mate_id, flag_holder_ids, persona_emails)
         except Exception:

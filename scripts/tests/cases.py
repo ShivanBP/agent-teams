@@ -422,7 +422,7 @@ AGY_RUNNER_CMDS = [
     (
         "gemini-3.7-flash", None, "high", "/tmp/probe", 1800,
         [
-            str(HOME / ".local" / "bin" / "agy"),
+            constants.AGY_BIN,
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/probe", "--model", "gemini-3.7-flash",
             "--effort", "high", "--output-format", "stream-json",
@@ -432,7 +432,7 @@ AGY_RUNNER_CMDS = [
     (
         "gemini-3.7-flash", "agy-session-1", "medium", "/tmp/resume", 90,
         [
-            str(HOME / ".local" / "bin" / "agy"),
+            constants.AGY_BIN,
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/resume", "--model", "gemini-3.7-flash",
             "--effort", "medium", "--output-format", "stream-json",
@@ -1433,7 +1433,7 @@ OPENCODE_RUNNER_CMDS = [
     (
         "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", None, "high", "/tmp/probe",
         [
-            str(HOME / ".opencode" / "bin" / "opencode"),
+            constants.OPENCODE_BIN,
             "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
             "--variant", "high", "--dir", "/tmp/probe",
@@ -1442,7 +1442,7 @@ OPENCODE_RUNNER_CMDS = [
     (
         "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro", "sid-oc-1", None, None,
         [
-            str(HOME / ".opencode" / "bin" / "opencode"),
+            constants.OPENCODE_BIN,
             "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
             "--session", "sid-oc-1",

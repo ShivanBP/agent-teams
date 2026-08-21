@@ -225,12 +225,15 @@ def user_ids(name, emails):
     return ids, missing
 
 
-def visible_streams(name):
+def visible_streams(name, details=False):
     cfg = load(name)
     payload = request(cfg, "GET", "/api/v1/streams")
     if payload.get("result") != "success":
         return []
-    return sorted(s["name"] for s in payload.get("streams", []))
+    streams = sorted(payload.get("streams", []), key=lambda stream: stream["name"])
+    if details:
+        return streams
+    return [stream["name"] for stream in streams]
 
 
 def topics(name, stream_id):

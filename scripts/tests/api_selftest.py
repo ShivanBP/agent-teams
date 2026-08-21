@@ -104,6 +104,15 @@ def _body():
             else:
                 failed += 1
                 print("FAIL topics(...) -> %r wanted %r" % (got, expected))
+        globals()["request"] = lambda *a, **k: cases.VISIBLE_STREAMS
+        names = visible_streams("bridge")
+        details = visible_streams("bridge", details=True)
+        if (names == ["general", "setup"]
+                and [stream["name"] for stream in details] == names):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL visible_streams details -> names=%r details=%r" % (names, details))
     finally:
         globals()["load"], globals()["request"] = old_load, old_request
     print("api.py selftest: %d PASS, %d FAIL" % (passed, failed))

@@ -213,6 +213,43 @@ READ_WINDOWS = [
     (True, {"num_before": 0, "num_after": 30, "include_anchor": False}),
 ]
 
+READ_NARROWS = [
+    ((7, None, None), [{"operator": "channel", "operand": 7}]),
+    ((None, None, None), [{"operator": "channels", "operand": "public"}]),
+    ((None, "roadmap", "alpha"), [
+        {"operator": "channels", "operand": "public"},
+        {"operator": "topic", "operand": "roadmap"},
+        {"operator": "search", "operand": "alpha"},
+    ]),
+]
+
+CHANNEL_LIST = (
+    [{"name": "general", "description": "Realm-wide chat"},
+     {"name": "setup", "description": "Fleet work"}],
+    "#general: Realm-wide chat\n#setup: Fleet work",
+)
+
+TOPIC_LIST = (
+    "setup",
+    [{"name": "first", "max_id": 2}, {"name": "second", "max_id": 4}],
+    "#setup > first\n#setup > second",
+)
+
+CROSS_CHANNEL_MESSAGES = [
+    {"id": 1, "timestamp": 100, "stream_id": 7, "display_recipient": "general",
+     "subject": "old", "sender_full_name": "One", "content": "older"},
+    {"id": 2, "timestamp": 200, "stream_id": 9, "display_recipient": "setup",
+     "subject": "new", "sender_full_name": "Two", "content": "newest\nmessage"},
+]
+
+VISIBLE_STREAMS = {
+    "result": "success",
+    "streams": [
+        {"name": "setup", "description": "Fleet work"},
+        {"name": "general", "description": "Realm-wide chat"},
+    ],
+}
+
 # (site, stream_id, stream_name, topic, message_id, expected url) for api.permalink
 # All values are intentionally fake fixtures.
 PERMALINKS = [

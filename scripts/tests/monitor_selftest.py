@@ -24,6 +24,8 @@ def _body():
     import tests.cases as cases
 
     passed = failed = 0
+    render_groups = (("Workshop", ("setup",)), ("Domains", ("maintenance",)))
+    topic_groups = (("Workshop", ("status", "setup")),)
     try:
         store.inflight_all()
         _ledger_rows("cost")
@@ -87,7 +89,7 @@ def _body():
         print("FAIL merge_todos(...) -> %r wanted %r" % (merged, cases.BOARD_TODO_EXPECTED))
     board = render_board(
         cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
-        cases.BOARD_RENDER_DIGESTS, now_ts=200000)
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000, groups=render_groups)
     if all(part in board for part in cases.BOARD_RENDER_CONTAINS) and \
             all(part not in board for part in cases.BOARD_RENDER_FORBIDDEN):
         passed += 1
@@ -96,7 +98,8 @@ def _body():
         print("FAIL render_board(...) missing a required section or link")
     parked_board = render_board(
         cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
-        cases.BOARD_RENDER_DIGESTS, now_ts=200000, parked=cases.BOARD_RENDER_PARKED)
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000, parked=cases.BOARD_RENDER_PARKED,
+        groups=render_groups)
     if all(part in parked_board for part in cases.BOARD_PARKED_CONTAINS) \
             and all(part not in parked_board for part in cases.BOARD_PARKED_FORBIDDEN):
         passed += 1
@@ -111,7 +114,10 @@ def _body():
         cases.BOARD_RENDER_DIGESTS, now_ts=200000)
     # against BOARD_SECTIONS, not a literal list: channels.json is gitignored, so a hardcoded
     # group list is green in CI against the example and red on any estate that added a group
-    if combined_parts == {"activity": board} \
+    default_board = render_board(
+        cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
+        cases.BOARD_RENDER_DIGESTS, now_ts=200000, groups=constants.BOARD_GROUPS)
+    if combined_parts == {"activity": default_board} \
             and tuple(split_parts) == constants.BOARD_SECTIONS:
         passed += 1
     else:
@@ -122,8 +128,8 @@ def _body():
     saved_topics = (api.visible_streams, api.stream_id, api.topics, api.load, _message)
     topic_calls = []
     try:
-        api.visible_streams = lambda as_name: [constants.STATUS_STREAM, "setup"]
-        api.stream_id = lambda as_name, channel: 9 if channel == constants.STATUS_STREAM else 7
+        api.visible_streams = lambda as_name: ["status", "setup"]
+        api.stream_id = lambda as_name, channel: 9 if channel == "status" else 7
         api.topics = lambda as_name, stream_id: ([
             {"name": constants.BOARD_TOPIC, "max_id": 12},
         ] if stream_id == 9 else [
@@ -135,7 +141,7 @@ def _body():
         api.load = lambda as_name: {"site": "https://example"}
         globals()["_message"] = lambda as_name, message_id: topic_calls.append(message_id) or {
             "timestamp": {12: 999950, 11: 999900, 9: 100, 8: 50}[message_id]}
-        recent = _topic_todos("bridge", now_ts=1000000)
+        recent = _topic_todos("bridge", now_ts=1000000, groups=topic_groups)
     finally:
         api.visible_streams, api.stream_id, api.topics, api.load = saved_topics[:4]
         globals()["_message"] = saved_topics[4]
@@ -165,7 +171,8 @@ def _body():
     unresolved = unresolved_topics(
         "bob", stream_id_fn=lambda as_name, channel: 7 if channel == "setup" else None,
         topics_fn=lambda as_name, stream_id: cases.PARK_API_TOPICS,
-        load_fn=lambda as_name: {"site": "https://example"})
+        load_fn=lambda as_name: {"site": "https://example"},
+        groups=(("Workshop", ("setup",)),))
     if unresolved == cases.PARK_API_EXPECTED:
         passed += 1
     else:

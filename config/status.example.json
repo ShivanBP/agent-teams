@@ -1,0 +1,4 @@
+{
+  "channel": "status",
+  "domain_channel": "{channel}-status"
+}

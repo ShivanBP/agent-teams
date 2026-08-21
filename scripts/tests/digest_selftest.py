@@ -225,7 +225,8 @@ def _body():
         stream_id_fn=lambda as_name, channel: 7,
         topics_fn=lambda as_name, stream_id: cases.DIGEST_SWEEP_TOPICS,
         load_fn=lambda name: cases.DIGEST_SWEEP_STATE if name == "digests" else {},
-        refresh_fn=lambda *args: calls.append(args))
+        refresh_fn=lambda *args: calls.append(args),
+        groups=(("Workshop", ("setup",)),))
     if swept == cases.DIGEST_SWEEP_EXPECTED and calls == [
             (constants.BRIDGE_IDENTITY, 7, "setup", "dirty")]:
         passed += 1
@@ -240,7 +241,8 @@ def _body():
         topics_fn=lambda as_name, stream_id: cases.DIGEST_SWEEP_TOPICS,
         load_fn=lambda name: ({"7:dirty": 1} if name == constants.PARKED_STATE
                               else cases.DIGEST_SWEEP_STATE),
-        refresh_fn=lambda *args: calls.append(args))
+        refresh_fn=lambda *args: calls.append(args),
+        groups=(("Workshop", ("setup",)),))
     if swept == [] and calls == []:
         passed += 1
     else:

@@ -22,6 +22,17 @@ def _body():
             failed += 1
             print("FAIL WAKE_HEADER missing %r" % substring)
 
+    for template, values, expected in [
+        (PROGRESS_LINE, {"age": "5m", "said": "testing"}, "Working, 5m: testing"),
+        (PROGRESS_DONE, {"age": "12m"}, "Done, 12m."),
+    ]:
+        got = template.format(**values)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL progress prompt %r -> %r wanted %r" % (template, got, expected))
+
     for attr, substring in cases.PROMPT_CONTAINS:
         if substring in globals()[attr]:
             passed += 1

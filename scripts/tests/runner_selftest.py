@@ -14,6 +14,7 @@ def run(module):
 def _body():
     global PERSONA_DIR
 
+    import json
     import os
     from pathlib import Path
     import subprocess
@@ -346,6 +347,48 @@ def _body():
         else:
             failed += 1
             print("FAIL last_action tail -> %r wanted %r" % (got, cases.LAST_ACTION_EXPECTED))
+
+    for event, expected in cases.LAST_SAID_EVENTS:
+        got = _said_text(event)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL said text event %r -> %r wanted %r" % (event, got, expected))
+
+    with tempfile.TemporaryDirectory() as root:
+        old_logs = constants.LOGS_DIR
+        try:
+            constants.LOGS_DIR = Path(root)
+            path = _wake_log_path(cases.LAST_ACTION_LANE)
+            path.parent.mkdir(parents=True)
+            path.write_text(cases.LAST_SAID_LOG)
+            got = last_said(cases.LAST_ACTION_LANE)
+        finally:
+            constants.LOGS_DIR = old_logs
+        if got == cases.LAST_SAID_EXPECTED:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL last_said tail -> %r wanted %r" % (got, cases.LAST_SAID_EXPECTED))
+
+    with tempfile.TemporaryDirectory() as root:
+        old_logs = constants.LOGS_DIR
+        try:
+            constants.LOGS_DIR = Path(root)
+            path = _wake_log_path(cases.LAST_ACTION_LANE)
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({"type": "item.completed", "item": {
+                "type": "agent_message", "text": "x" * (cases.LAST_SAID_MAX + 1)}}) + "\n")
+            got = last_said(cases.LAST_ACTION_LANE)
+        finally:
+            constants.LOGS_DIR = old_logs
+        if got == "x" * cases.LAST_SAID_MAX:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL last_said limit -> %r chars wanted %r" %
+                  (len(got or ""), cases.LAST_SAID_MAX))
 
     with tempfile.TemporaryDirectory() as root:
         wake_log = Path(root) / "wake.jsonl"

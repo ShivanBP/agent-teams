@@ -461,6 +461,7 @@ def handle_wake(identity, event, flag_holder_ids):
                     _post_operator_failure(prompts.OPERATOR_CONTINUATION_FAILED, exc,
                                            post_channel, post_topic)
     finally:
+        finish_progress(lane)
         store.inflight_clear(lane)
 
 
@@ -607,6 +608,7 @@ def handle_operator_tag(event, mate_id):
         log.exception("bridge seat run failed for tag message %s", message_id)
         _post_operator_failure(prompts.BRIDGE_REPLY_FAILED, exc, channel, topic, message_id)
     finally:
+        finish_progress(lane, message_id=message_id)
         store.inflight_clear(lane, message_id=message_id)
 
 
@@ -660,6 +662,63 @@ def stalled_wake(lane, now_ts, run=subprocess.run, own_pid=os.getpid):
             return None
     return {"pid": pids[0], "quiet_s": quiet_s, "wake_log": str(wake_log)}
 
+
+def _progress_age(info, now_ts, rounded):
+    age_s = max(0, now_ts - info.get("ts", now_ts))
+    if rounded:
+        step_s = constants.PROGRESS_MIN * 60
+        age_s = (age_s // step_s) * step_s
+    return monitor.format_age(age_s)
+
+
+def progress_sweep(now_ts):
+    for lane, info in list(store.inflight_all().items()):
+        started = info.get("ts")
+        if started is None or now_ts - started < constants.PROGRESS_MIN * 60:
+            continue
+        said = runner.last_said(lane) or runner.last_action(lane) or prompts.BOARD_UNKNOWN
+        body = prompts.PROGRESS_LINE.format(
+            age=_progress_age(info, now_ts, rounded=True), said=said)
+        if info.get("progress_body") == body:
+            continue
+        try:
+            if info.get("progress_id") is None:
+                message_id = send_mod.post(
+                    info["persona"], info["stream_id"], info["topic"], body)
+            else:
+                message_id = send_mod.update(info["persona"], info["progress_id"], body)
+        except (Exception, SystemExit):
+            log.exception("failed to update progress for lane %s", lane)
+            continue
+
+        def fn(data, lane=lane, message_id=message_id, body=body):
+            if lane in data:
+                data[lane]["progress_id"] = message_id
+                data[lane]["progress_body"] = body
+
+        store.mutate("inflight", fn)
+
+
+def finish_progress(lane, message_id=None):
+    info = store.inflight_all().get(lane) or {}
+    if message_id is not None and info.get("message_id") != message_id:
+        return
+    progress_id = info.get("progress_id")
+    if progress_id is None:
+        return
+    try:
+        send_mod.delete(info["persona"], progress_id)
+        return
+    except (Exception, SystemExit):
+        log.exception("failed to delete progress for lane %s; marking done", lane)
+    try:
+        body = prompts.PROGRESS_DONE.format(
+            age=_progress_age(info, time.time(), rounded=False))
+        send_mod.update(info["persona"], progress_id, body)
+    except (Exception, SystemExit):
+        log.exception("failed to mark progress done for lane %s", lane)
+
+
 def stall_sweep_once(now_ts=None):
     """Finish every local stall check before best-effort Zulip posts and the board update."""
     now_ts = now_ts if now_ts is not None else time.time()
@@ -696,6 +755,7 @@ def stall_sweep_once(now_ts=None):
                 data[lane]["alerted"] = True
 
         store.mutate("inflight", fn)
+    progress_sweep(now_ts)
     monitor.update_board()
 
 

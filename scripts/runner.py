@@ -67,7 +67,7 @@ def _action_key(event):
     return None
 
 
-def last_action(lane):
+def _tail_events(lane):
     path = _wake_log_path(lane)
     try:
         with path.open("rb") as f:
@@ -76,14 +76,46 @@ def last_action(lane):
             f.seek(max(0, size - 65536))
             lines = f.read().decode(errors="replace").splitlines()
     except OSError:
-        return None
-    for line in reversed(lines):
+        return []
+    events = []
+    for line in lines:
         try:
-            key = _action_key(json.loads(line))
+            events.append(json.loads(line))
         except ValueError:
             continue
+    return events
+
+
+def last_action(lane):
+    for event in reversed(_tail_events(lane)):
+        key = _action_key(event)
         if key in constants.LAST_ACTION_LABELS:
             return constants.LAST_ACTION_LABELS[key]
+    return None
+
+
+def _said_text(event):
+    event_type = event.get("type")
+    if event_type == "assistant":
+        content = (event.get("message") or {}).get("content") or []
+        for part in reversed(content):
+            if part.get("type") == "text":
+                return part.get("text")
+    if event_type == "item.completed":
+        item = event.get("item") or {}
+        if item.get("type") == "agent_message":
+            return item.get("text")
+    if event_type == "text":
+        return (event.get("part") or {}).get("text")
+    return None
+
+
+def last_said(lane):
+    for event in reversed(_tail_events(lane)):
+        text = _said_text(event)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        return text.strip().splitlines()[0][:140]
     return None
 
 

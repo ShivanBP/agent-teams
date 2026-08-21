@@ -374,7 +374,7 @@ def _board_sections(lanes=None, persona_rows=None, todos=None, digests=None,
     persona_rows = snapshot() if persona_rows is None else persona_rows
     supplied_todos = todos is not None
     if todos is None:
-        todos = merge_todos(_loop_todos(as_name), _topic_todos(as_name))
+        todos = merge_todos(_loop_todos(as_name), _topic_todos(as_name, groups=groups))
     if parked is None:
         parked = [] if supplied_todos else parked_topics(as_name)
     digests = store.load("digests") if digests is None else digests

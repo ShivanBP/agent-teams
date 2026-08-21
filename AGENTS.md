@@ -24,6 +24,8 @@ Wakes: a mention wakes a persona; the record it sees is a delta since its lane's
 a topic is an open session, resolving it ends the session, reopening starts fresh; status
 topics are the exception, they are never resolved. The flags -opus -fable -sonnet -low -mid -high
 -xtra -claude -codex -agy -opencode parse only off configured flag holders.
+A wake that finds its resource held by another wake reports blocked and ends; it never sleeps
+on it; it kills only pids it started.
 
 Loops: header before kick one; `loops.py kick` fires kick one so the ledger row lands
 before the post; every kick ends "kick n/N" and mentions its persona; the budget floor is

@@ -41,7 +41,7 @@ def _body():
                   (stderr, stdout, got, expected))
 
     for persona, model, session, effort, expected in cases.RUNNER_CMDS:
-        got = _build_cmd(persona, model, session, effort, "hi")
+        got = _build_cmd(persona, model, session, effort)
         if got == expected:
             passed += 1
         else:
@@ -68,7 +68,7 @@ def _body():
             print("FAIL _parse_claude_stream(...) -> %r wanted %r" % (got, expected))
 
     for model, session, effort, output_path, expected in cases.CODEX_RUNNER_CMDS:
-        got = _build_cmd_codex(model, session, effort, output_path, "hi")
+        got = _build_cmd_codex(model, session, effort, output_path)
         if got == expected:
             passed += 1
         else:
@@ -88,7 +88,7 @@ def _body():
             print("FAIL _parse_codex(...) -> %r wanted %r" % (got, expected))
 
     for model, session, effort, cwd, timeout, expected in cases.AGY_RUNNER_CMDS:
-        got = _build_cmd_agy(model, session, effort, cwd, timeout, "hi")
+        got = _build_cmd_agy(model, session, effort, cwd, timeout)
         if got == expected:
             passed += 1
         else:
@@ -198,7 +198,7 @@ def _body():
                   (persona, got, expected))
 
     for model, session, effort, cwd, expected in cases.OPENCODE_RUNNER_CMDS:
-        got = _build_cmd_opencode(model, session, effort, cwd, "hi")
+        got = _build_cmd_opencode(model, session, effort, cwd)
         if got == expected:
             passed += 1
         else:
@@ -223,6 +223,7 @@ def _body():
 
         def fake_run(*args, **kwargs):
             captured["stdin"] = kwargs.get("stdin")
+            captured["input"] = kwargs.get("input")
             captured.update(kwargs["env"])
             return subprocess.CompletedProcess(
                 args[0], 0, stdout=(
@@ -246,7 +247,9 @@ def _body():
             else:
                 os.environ["OPENCODE_DISABLE_CLAUDE_CODE"] = before
         got = captured.get("OPENCODE_DISABLE_CLAUDE_CODE")
-        got_stdin = "devnull" if captured.get("stdin") == subprocess.DEVNULL else "other"
+        # stdin stays unset when the brief feeds it: subprocess opens the pipe and closes it.
+        got_stdin = ("brief" if captured.get("input") == "hi" and captured.get("stdin") is None
+                     else "other")
         if got == expected and got_stdin == expected_stdin:
             passed += 1
         else:
@@ -545,7 +548,7 @@ def _body():
             pass
         finally:
             subprocess.run = original_run
-        built = " ".join(str(part) for part in captured[:-1])  # the prompt is always last
+        built = " ".join(str(part) for part in captured)
         for fragment in fragments:
             if fragment in built:
                 passed += 1
@@ -553,6 +556,42 @@ def _body():
                 failed += 1
                 print("FAIL run(provider=%r, model=%r, effort=%r) built no %r" %
                       (provider, model, effort, fragment))
+
+    for provider in cases.STDIN_BRIEF_PROVIDERS:
+        for label, session in (("fresh", None), ("resumed", "sid-probe")):
+            spawned = {}
+
+            def fake_run(*args, **kwargs):
+                spawned["argv"] = args[0]
+                spawned["stdin"] = kwargs.get("input")
+                return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="stop")
+
+            original_run = subprocess.run
+            subprocess.run = fake_run
+            try:
+                run("bob", cases.STDIN_BRIEF_SENTINEL, provider=provider, session=session,
+                    cwd=REPO_DIR, timeout=1)
+            except RuntimeError:
+                pass
+            finally:
+                subprocess.run = original_run
+            argv = " ".join(str(part) for part in spawned.get("argv") or [])
+            stdin_text = spawned.get("stdin") or ""
+            if cases.STDIN_BRIEF_SENTINEL not in argv and cases.STDIN_BRIEF_SENTINEL in stdin_text:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL %s %s wake put the brief in argv or not on stdin: argv=%r stdin=%r" %
+                      (provider, label, argv, stdin_text[:200]))
+
+    for prompt, expected in cases.AGY_STDIN_LINES:
+        line = _agy_stdin(prompt)
+        got = json.loads(line)
+        if got == expected and line.endswith("\n"):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _agy_stdin(%r) -> %r wanted %r" % (prompt, got, expected))
 
     for name, value in saved_bins.items():
         setattr(constants, name, value)

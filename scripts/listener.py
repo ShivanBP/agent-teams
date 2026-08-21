@@ -413,8 +413,11 @@ def handle_wake(identity, event, flag_holder_ids):
             try:
                 record, new_anchor = build_delta_record(identity, channel, topic, record_anchor)
                 run_cwd, worktree_notice = runner.wake_cwd(identity, stream_id, topic)
-                prompt = prompts.wake_prompt(body, record, worktree_notice,
-                                             constants.domain_root(channel))
+                # Stamped here, a breath before the spawn: the runner's timeout clock starts
+                # at the subprocess, not at the wake.
+                prompt = prompts.wake_prompt(
+                    body, record, worktree_notice, constants.domain_root(channel),
+                    kill_at=prompts.kill_clock(time.time(), constants.RUN_TIMEOUT))
                 run_model, run_effort, run_level = resolve_wake_settings(
                     identity, provider, model, effort)
                 log.info("running %s lane=%s provider=%s model=%s effort=%s resume=%s",

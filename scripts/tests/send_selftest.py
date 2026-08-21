@@ -109,6 +109,59 @@ def _body():
             failed += 1
             print("FAIL _refuse_status_topic(%r, %r) code=%r note=%r"
                   % (verb, channel, code, stderr.getvalue()))
+    for verb, channel, should_refuse in cases.STATUS_CHANNEL_GUARD:
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                _refuse_status_channel(verb, channel)
+            code = None
+        except SystemExit as exc:
+            code = exc.code
+        refused = code == 2
+        if refused == should_refuse and (not refused or channel in stderr.getvalue()):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _refuse_status_channel(%r, %r) code=%r note=%r"
+                  % (verb, channel, code, stderr.getvalue()))
+    for verb, who, should_refuse in cases.BRIDGE_ONLY_VERBS:
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                _refuse_unless_bridge(verb, who)
+            code = None
+        except SystemExit as exc:
+            code = exc.code
+        refused = code == 2
+        if refused == should_refuse and (not refused or verb in stderr.getvalue()):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _refuse_unless_bridge(%r, %r) code=%r note=%r"
+                  % (verb, who, code, stderr.getvalue()))
+    # The subscription body is the one place a typo silently creates a channel, so a row drives
+    # the real function with the doors stubbed and reads back what would have been sent.
+    old_ready, old_request, old_check, old_sid = _ready, api.request, api.check, api.stream_id
+    try:
+        globals()["_ready"] = lambda as_name, enforce=True: {"name": as_name}
+        api.stream_id = lambda name, channel: 7
+        api.check = lambda payload, what: payload
+        for method, channel, principals, expected in cases.SUBSCRIPTION_BODIES:
+            seen = []
+            api.request = lambda cfg, m, path, params, seen=seen: seen.append(
+                (m, path, params)) or {"result": "success"}
+            got = _subscription_change(
+                "bridge", "--subscribe", method, channel, principals)
+            wanted = (method, "/api/v1/users/me/subscriptions", expected)
+            if got == 7 and seen == [wanted]:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL _subscription_change(%r, %r) sent %r, wanted %r"
+                      % (method, principals, seen, wanted))
+    finally:
+        globals()["_ready"] = old_ready
+        api.request, api.check, api.stream_id = old_request, old_check, old_sid
     import constants
     saved_identity = constants.BRIDGE_IDENTITY
     try:

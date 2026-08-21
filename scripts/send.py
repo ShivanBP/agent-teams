@@ -245,6 +245,14 @@ def status_channel(channel):
             and len(name) > len(head) + len(tail))
 
 
+def _refuse_unless_bridge(verb, as_name):
+    """The topic verbs inlined this; the channel verbs made it five copies."""
+    if verb_allowed(as_name):
+        return
+    sys.stderr.write(prompts.VERB_BRIDGE_ONLY.format(verb=verb, asked=as_name) + "\n")
+    raise SystemExit(2)
+
+
 def _refuse_status_topic(verb, channel, topic):
     """A status topic is an open lane by design (AGENTS.md); this was prose in --resolve's help
     text until now, so every seat could still spend the call."""
@@ -285,9 +293,7 @@ def _topic_anchor_or_refuse(as_name, channel, topic):
 def resolve_topic(as_name, channel, topic):
     """Rename to the ✔ prefix, propagate_mode change_all: probed live 2026-08-12 against a
     scratch topic, this is native resolve, notification-bot marker included, not a lookalike."""
-    if not verb_allowed(as_name):
-        sys.stderr.write(prompts.VERB_BRIDGE_ONLY.format(verb="--resolve", asked=as_name) + "\n")
-        raise SystemExit(2)
+    _refuse_unless_bridge("--resolve", as_name)
     _refuse_status_topic("--resolve", channel, topic)
     cfg = _ready(as_name)
     message_id = _topic_anchor_or_refuse(as_name, channel, topic)
@@ -302,9 +308,7 @@ def resolve_topic(as_name, channel, topic):
 
 def move_topic(as_name, channel, topic, target_channel):
     """Cross-channel move: stream_id plus propagate_mode change_all, probed live 2026-08-12."""
-    if not verb_allowed(as_name):
-        sys.stderr.write(prompts.VERB_BRIDGE_ONLY.format(verb="--move-to", asked=as_name) + "\n")
-        raise SystemExit(2)
+    _refuse_unless_bridge("--move-to", as_name)
     _refuse_status_topic("--move-to", channel, topic)
     cfg = _ready(as_name)
     target_sid = api.stream_id(as_name, target_channel)
@@ -332,6 +336,107 @@ def react(as_name, message_id, emoji_name):
     )
 
 
+# --- channel verbs (browser Zulip seat, 2026-08-20) ---------------------------------------
+# Bridge-only like the topic verbs, and each one endpoint. Zulip's own refusal is passed
+# through verbatim by api.check: where the bot's role blocks a verb, that sentence is the
+# answer, not something to route around.
+
+
+def _refuse_status_channel(verb, channel):
+    """A status channel is the one lane the fleet reads without being told to. Archiving or
+    renaming it takes that lane away, so both refuse before any API call; a description edit
+    does not, and is allowed."""
+    if not status_channel(channel):
+        return
+    sys.stderr.write(prompts.STATUS_CHANNEL_LOCKED.format(verb=verb, channel=channel) + "\n")
+    raise SystemExit(2)
+
+
+def _channel_id_or_refuse(as_name, channel):
+    sid = api.stream_id(as_name, channel)
+    if sid is None:
+        api.refuse_narrow_miss(as_name, channel)
+    return sid
+
+
+def create_channel(as_name, channel, description="", subscribers=()):
+    """POST /channels/create. The endpoint requires a non-empty integer subscriber list, so an
+    unnamed create subscribes the running identity and nobody else."""
+    _refuse_unless_bridge("--channel-create", as_name)
+    cfg = _ready(as_name)
+    ids, missing = api.user_ids(as_name, subscribers)
+    if missing:
+        sys.stderr.write(prompts.PRINCIPAL_UNKNOWN.format(who=", ".join(missing)) + "\n")
+        raise SystemExit(4)
+    if not ids:
+        ids = [api.me(as_name)["user_id"]]
+    api.check(
+        api.request(cfg, "POST", "/api/v1/channels/create", {
+            "name": channel, "description": description or "", "subscribers": ids,
+        }),
+        "POST /channels/create",
+    )
+    # The endpoint answers success with no stream_id (probed 2026-08-20), so the id is read
+    # back; every other verb prints one and a caller should not have to special-case create.
+    return api.stream_id(as_name, channel)
+
+
+def update_channel(as_name, channel, description=None, rename=None):
+    """PATCH /streams/{id}. The /channels/{id} alias is a 404 on this server (probed
+    2026-08-20); /streams is the live path."""
+    _refuse_unless_bridge("--channel-update", as_name)
+    if rename:
+        _refuse_status_channel("--rename", channel)
+    cfg = _ready(as_name)
+    sid = _channel_id_or_refuse(as_name, channel)
+    params = {}
+    if description is not None:
+        params["description"] = description
+    if rename:
+        params["new_name"] = rename
+    if not params:
+        sys.stderr.write(prompts.CHANNEL_UPDATE_EMPTY + "\n")
+        raise SystemExit(2)
+    api.check(api.request(cfg, "PATCH", "/api/v1/streams/%d" % sid, params),
+              "PATCH /streams (update)")
+    return sid
+
+
+def archive_channel(as_name, channel):
+    """DELETE /streams/{id}, Zulip's archive. Administrator-only on this server; a member bot
+    hears that refusal and it is reported, never worked around."""
+    _refuse_unless_bridge("--channel-archive", as_name)
+    _refuse_status_channel("--channel-archive", channel)
+    cfg = _ready(as_name)
+    sid = _channel_id_or_refuse(as_name, channel)
+    api.check(api.request(cfg, "DELETE", "/api/v1/streams/%d" % sid), "DELETE /streams (archive)")
+    return sid
+
+
+def _subscription_change(as_name, verb, method, channel, principals):
+    """POST and DELETE /users/me/subscriptions differ only in method and body shape.
+
+    The channel id is resolved first and a miss refuses: POST to that endpoint subscribes
+    *or creates*, so a mistyped name would quietly make a channel instead of failing."""
+    _refuse_unless_bridge(verb, as_name)
+    cfg = _ready(as_name)
+    sid = _channel_id_or_refuse(as_name, channel)
+    params = {"subscriptions": [{"name": channel}] if method == "POST" else [channel]}
+    if principals:
+        params["principals"] = list(principals)
+    api.check(api.request(cfg, method, "/api/v1/users/me/subscriptions", params),
+              "%s /users/me/subscriptions" % method)
+    return sid
+
+
+def subscribe(as_name, channel, principals=()):
+    return _subscription_change(as_name, "--subscribe", "POST", channel, principals)
+
+
+def unsubscribe(as_name, channel, principals=()):
+    return _subscription_change(as_name, "--unsubscribe", "DELETE", channel, principals)
+
+
 def _selftest():
     from tests import send_selftest
     return send_selftest.run(sys.modules[__name__])
@@ -355,6 +460,24 @@ def main():
     ap.add_argument("--move-to", dest="move_to", metavar="CHANNEL",
                      help="Bridge-only. Moves --channel/--topic to CHANNEL. Moving a live topic "
                           "resets its lane; a status channel's topics are refused.")
+    ap.add_argument("--channel-create", action="store_true", dest="channel_create",
+                     help="Bridge-only. Creates --channel. Subscribes --principal, or the "
+                          "running identity when none is named.")
+    ap.add_argument("--channel-update", action="store_true", dest="channel_update",
+                     help="Bridge-only. Edits --channel with --description and/or --rename.")
+    ap.add_argument("--channel-archive", action="store_true", dest="channel_archive",
+                     help="Bridge-only. Archives --channel. Administrator-only on the server; "
+                          "a status channel is refused here first.")
+    ap.add_argument("--subscribe", action="store_true",
+                     help="Bridge-only. Subscribes --principal, or the running identity, to an "
+                          "existing --channel.")
+    ap.add_argument("--unsubscribe", action="store_true",
+                     help="Bridge-only. Unsubscribes --principal, or the running identity, "
+                          "from --channel.")
+    ap.add_argument("--description", help="With --channel-create or --channel-update.")
+    ap.add_argument("--rename", metavar="NAME", help="With --channel-update.")
+    ap.add_argument("--principal", action="append", default=[], metavar="EMAIL",
+                     help="Repeatable. The realm user a channel verb acts for.")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(_selftest())
@@ -369,6 +492,27 @@ def main():
             print(resolve_topic(args.as_name, args.channel, args.topic))
         else:
             print(move_topic(args.as_name, args.channel, args.topic, args.move_to))
+        return
+    channel_verbs = [
+        ("--channel-create", args.channel_create,
+         lambda: create_channel(args.as_name, args.channel, args.description or "",
+                                args.principal)),
+        ("--channel-update", args.channel_update,
+         lambda: update_channel(args.as_name, args.channel, args.description, args.rename)),
+        ("--channel-archive", args.channel_archive,
+         lambda: archive_channel(args.as_name, args.channel)),
+        ("--subscribe", args.subscribe,
+         lambda: subscribe(args.as_name, args.channel, args.principal)),
+        ("--unsubscribe", args.unsubscribe,
+         lambda: unsubscribe(args.as_name, args.channel, args.principal)),
+    ]
+    chosen = [(flag, run) for flag, on, run in channel_verbs if on]
+    if chosen:
+        if len(chosen) > 1:
+            ap.error("give exactly one channel verb")
+        if not args.channel:
+            ap.error("--channel is required")
+        print(chosen[0][1]())
         return
     if args.react_to:
         if not args.emoji:

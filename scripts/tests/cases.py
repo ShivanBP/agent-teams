@@ -304,6 +304,37 @@ STATUS_TOPIC_GUARD = [
     ("--move-to", "setup", False),
 ]
 
+# (verb, channel, should refuse) for send._refuse_status_channel. Archive and rename take the
+# lane away; a description edit does not and is not in this table.
+STATUS_CHANNEL_GUARD = [
+    ("--channel-archive", constants.STATUS_STREAM, True),
+    ("--rename", constants.STATUS_STREAM, True),
+    ("--channel-archive", constants.DOMAIN_STATUS_CHANNEL.format(channel="foundry"), True),
+    ("--rename", constants.DOMAIN_STATUS_CHANNEL.format(channel="foundry"), True),
+    ("--channel-archive", "setup", False),
+    ("--rename", "setup", False),
+]
+
+# (verb, identity, should refuse) for send._refuse_unless_bridge: every channel verb is on the
+# same grant as the topic verbs, so the table walks all seven rather than trusting the shape.
+BRIDGE_ONLY_VERBS = [
+    (verb, who, who != constants.BRIDGE_IDENTITY)
+    for verb in ("--resolve", "--move-to", "--channel-create", "--channel-update",
+                 "--channel-archive", "--subscribe", "--unsubscribe")
+    for who in (constants.BRIDGE_IDENTITY, "bob", "eve")
+]
+
+# (method, channel, principals, expected params) for send._subscription_change's body shape:
+# POST takes objects, DELETE takes bare names, and principals ride along only when named.
+SUBSCRIPTION_BODIES = [
+    ("POST", "setup", (), {"subscriptions": [{"name": "setup"}]}),
+    ("DELETE", "setup", (), {"subscriptions": ["setup"]}),
+    ("POST", "setup", ("a@b.c",),
+     {"subscriptions": [{"name": "setup"}], "principals": ["a@b.c"]}),
+    ("DELETE", "setup", ("a@b.c", "d@e.f"),
+     {"subscriptions": ["setup"], "principals": ["a@b.c", "d@e.f"]}),
+]
+
 # (stream_id, topic, persona, expected) for store.lane_key
 LANE_KEYS = [
     (42, "phase 1", "peter", "42:phase 1:peter"),

@@ -210,6 +210,21 @@ def attachment(name, url, open_fn=urllib.request.urlopen):
     return (ctype, data, link), None
 
 
+def user_ids(name, emails):
+    """Resolve realm emails to user ids. Returns (ids, unresolved), because a channel create
+    needs integer ids (subscribers[0] is not an integer, probed 2026-08-20) and the caller
+    should hear which address the realm does not know rather than a type error."""
+    cfg = load(name)
+    payload = request(cfg, "GET", "/api/v1/users")
+    if payload.get("result") != "success":
+        return [], list(emails)
+    known = {u.get("email"): u.get("user_id") for u in payload.get("members", [])}
+    ids, missing = [], []
+    for email in emails:
+        (ids if email in known else missing).append(known.get(email, email))
+    return ids, missing
+
+
 def visible_streams(name):
     cfg = load(name)
     payload = request(cfg, "GET", "/api/v1/streams")

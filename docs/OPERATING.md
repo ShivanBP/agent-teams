@@ -109,6 +109,24 @@ naming convention batch, 2026-08-12); every other identity is refused before any
 Both refuse a status channel outright, bridge included (browser Zulip seat, 2026-08-20): the
 never-resolved rule was prose in a help string until then, so any seat could still spend the
 call.
+
+send.py --channel-create, --channel-update, --channel-archive, --subscribe and --unsubscribe
+are bridge-only on the same grant (browser Zulip seat, 2026-08-20). No user management, no role
+changes, no bot creation: those are not in the grant and are not implemented. --channel-archive
+and a --channel-update --rename refuse a status channel before any API call, for the same reason
+--resolve does.
+
+What the server actually allows, measured 2026-08-20 rather than assumed: channel
+administration belongs to a channel's creator, not to organization administrators alone. Bridge
+is a member-role bot and can create a channel and later update, rename or archive that one; a
+channel it did not create refuses with "You do not have permission to administer this channel."
+Subscribing and unsubscribing other users is not gated that way and works anywhere. So the plan's
+expectation that archive needs an admin role was wrong on this server: it needs to have been the
+creator. Nothing here grants bridge reach over channels the operator made.
+
+--subscribe resolves the channel id before it acts. POST /users/me/subscriptions subscribes *or
+creates*, so without that lookup a mistyped channel name would quietly make a channel.
+
 Read-only API GETs under your own zuliprc are open to everyone; writes go through send.py
 verbs only.
 

@@ -28,6 +28,12 @@ def _body():
         failed += 1
         print("FAIL STALL_MIN default -> %r wanted %r" %
               (STALL_MIN, cases.STALL_MIN_DEFAULT))
+    if PROGRESS_MIN == cases.PROGRESS_MIN_DEFAULT:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL PROGRESS_MIN default -> %r wanted %r" %
+              (PROGRESS_MIN, cases.PROGRESS_MIN_DEFAULT))
 
     try:
         example = json.loads(MATRIX_EXAMPLE_PATH.read_text())

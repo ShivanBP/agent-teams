@@ -160,6 +160,11 @@ UPDATES = [
     ("bridge", 456, "no @**all** ping", "no @" + Z + "**all** ping"),
 ]
 
+DELETES = [
+    ("bridge", 123),
+    ("bob", 456),
+]
+
 # (BRIDGE_IDENTITY value, --as name, expected) for send.verb_allowed with the seat renamed: the
 # grant follows the constant, and the old word loses it.
 VERB_GATE_RENAMED = [
@@ -419,6 +424,24 @@ LAST_ACTION_LOG = '\n'.join([
     '{"type":"turn.completed"}',
 ]) + '\n'
 LAST_ACTION_EXPECTED = "running command"
+
+LAST_SAID_EVENTS = [
+    ({"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "Claude line\nsecond"}]}}, "Claude line\nsecond"),
+    ({"type": "item.completed", "item": {
+        "type": "agent_message", "text": "Codex line"}}, "Codex line"),
+    ({"type": "text", "part": {"text": "OpenCode line"}}, "OpenCode line"),
+    ({"event": "step_update", "step_update": {
+        "step_type": "agent_response", "state": "DONE"}}, None),
+]
+
+LAST_SAID_LOG = '\n'.join([
+    '{"type":"item.completed","item":{"type":"agent_message","text":"old"}}',
+    '{"type":"item.completed","item":{"type":"command_execution"}}',
+    '{"type":"item.completed","item":{"type":"agent_message","text":"  latest line\\nmore  "}}',
+]) + '\n'
+LAST_SAID_EXPECTED = "latest line"
+LAST_SAID_MAX = 140
 
 JSONL_BACKGROUND = (
     'import subprocess, sys; print("fresh"); print("child err", file=sys.stderr); '
@@ -849,6 +872,7 @@ MONITOR_LANE_EXPECTED = [
 ]
 
 STALL_MIN_DEFAULT = 10
+PROGRESS_MIN_DEFAULT = 5
 
 # (mtime, holders rc/stdout, sockets by pid, expected hit)
 STALLED_WAKE_CHECKS = [
@@ -1414,6 +1438,7 @@ AGY_PARSES = [
 # (substring) guards for prompts.WAKE_HEADER: ask-and-stop and distillation, reaching every
 # persona from this one home
 WAKE_HEADER_CONTAINS = [
+    "latest line of plain text shows in the topic as a progress note",
     "post one question and end the wake",
     "only if the answer changes the work",
     "name a default so the operator can answer in one word",

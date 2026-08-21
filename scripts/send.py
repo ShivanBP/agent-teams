@@ -184,6 +184,15 @@ def update(as_name, message_id, content, enforce=True):
     return int(message_id)
 
 
+def delete(as_name, message_id):
+    cfg = _ready(as_name)
+    api.check(
+        api.request(cfg, "DELETE", "/api/v1/messages/%d" % int(message_id)),
+        "DELETE /messages",
+    )
+    return int(message_id)
+
+
 def current_content(as_name, message_id):
     """The stored body, markdown unrendered: what an idempotent board edit compares against
     before it spends a PATCH."""

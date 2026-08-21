@@ -58,8 +58,9 @@ TOPIC_ANCHOR_MISS = "Refused: no message found in {channel} > {topic} to anchor 
 WAKE_HEADER = (
     "You were mentioned in this Zulip topic. Reply in the same topic; your reply posts "
     "automatically when you finish. Only that final reply posts: nothing you write or run "
-    "mid-wake is visible to anyone, so the deliverable itself goes in the reply, never a "
-    "pointer to it.\n"
+    "mid-wake posts, except that your latest line of plain text shows in the topic as a "
+    "progress note while you work, so the deliverable itself goes in the reply, never a pointer "
+    "to it.\n"
     "You may post one question and end the wake, only if the answer changes the work; name "
     "a default so the operator can answer in one word. Otherwise state the assumption and "
     "continue.\n"
@@ -73,6 +74,9 @@ WAKE_HEADER = (
     "This topic's full history is searchable any time with scripts/read.py --search, not "
     "only when the record below is truncated."
 )
+
+PROGRESS_LINE = "Working, {age}: {said}"
+PROGRESS_DONE = "Done, {age}."
 
 DOMAIN_LINE = (
     "This channel's domain lives at {root}: read its CLAUDE.md and use its skills/ by path. "

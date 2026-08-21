@@ -495,6 +495,95 @@ def _body():
             runner._wake_log_path = old_path
             log.disabled = old_case_log_disabled
 
+    progress_rows = {
+        "lane-text": {"persona": "bob", "stream_id": 1, "topic": "one", "ts": 700},
+        "lane-action": {"persona": "jan", "stream_id": 2, "topic": "two", "ts": 1000},
+        "lane-short": {"persona": "eve", "stream_id": 3, "topic": "three", "ts": 1100},
+    }
+    progress_events = []
+    said = {"lane-text": "writing tests"}
+    actions = {"lane-action": "running command"}
+    old_inflight = store.inflight_all
+    old_mutate = store.mutate
+    old_said, old_action = runner.last_said, runner.last_action
+    old_post, old_update = send_mod.post, send_mod.update
+    try:
+        store.inflight_all = lambda: progress_rows
+        store.mutate = lambda name, fn: fn(progress_rows)
+        runner.last_said = lambda lane: said.get(lane)
+        runner.last_action = lambda lane: actions.get(lane)
+
+        def _post(persona, stream_id, topic, body):
+            progress_events.append(("post", persona, stream_id, topic, body))
+            return 40 + len([row for row in progress_events if row[0] == "post"])
+
+        send_mod.post = _post
+        send_mod.update = lambda persona, message_id, body: progress_events.append(
+            ("update", persona, message_id, body)) or message_id
+        progress_sweep(1000)
+        progress_sweep(1001)
+        said["lane-text"] = "checking tests"
+        progress_sweep(1300)
+    finally:
+        store.inflight_all, store.mutate = old_inflight, old_mutate
+        runner.last_said, runner.last_action = old_said, old_action
+        send_mod.post, send_mod.update = old_post, old_update
+    expected_progress = [
+        ("post", "bob", 1, "one", "Working, 5m: writing tests"),
+        ("update", "bob", 41, "Working, 10m: checking tests"),
+        ("post", "jan", 2, "two", "Working, 5m: running command"),
+    ]
+    if (progress_events == expected_progress
+            and progress_rows["lane-text"].get("progress_id") == 41
+            and progress_rows["lane-action"].get("progress_id") == 42
+            and "progress_id" not in progress_rows["lane-short"]):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL progress_sweep events=%r rows=%r" % (progress_events, progress_rows))
+
+    finish_rows = {
+        "lane-delete": {"persona": "bob", "message_id": 11, "ts": 100, "progress_id": 51},
+        "lane-fallback": {"persona": "jan", "ts": 100, "progress_id": 52},
+    }
+    finish_events = []
+    old_inflight = store.inflight_all
+    old_delete, old_update = send_mod.delete, send_mod.update
+    old_time = time.time
+    old_log_disabled = log.disabled
+    try:
+        store.inflight_all = lambda: finish_rows
+
+        def _delete(persona, message_id):
+            finish_events.append(("delete", persona, message_id))
+            if message_id == 52:
+                raise RuntimeError("refused")
+            return message_id
+
+        send_mod.delete = _delete
+        send_mod.update = lambda persona, message_id, body: finish_events.append(
+            ("update", persona, message_id, body)) or message_id
+        time.time = lambda: 820
+        log.disabled = True
+        finish_progress("lane-delete", message_id=10)
+        finish_progress("lane-delete", message_id=11)
+        finish_progress("lane-fallback")
+    finally:
+        store.inflight_all = old_inflight
+        send_mod.delete, send_mod.update = old_delete, old_update
+        time.time = old_time
+        log.disabled = old_log_disabled
+    expected_finish = [
+        ("delete", "bob", 51),
+        ("delete", "jan", 52),
+        ("update", "jan", 52, "Done, 12m."),
+    ]
+    if finish_events == expected_finish:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL finish_progress -> %r wanted %r" % (finish_events, expected_finish))
+
     board_updates = []
     sweep_events = []
     inflight = {
@@ -502,11 +591,13 @@ def _body():
         "lane-b": {"stream_id": 2, "topic": "two"},
     }
     old_inflight, old_update, old_stalled = store.inflight_all, monitor.update_board, stalled_wake
+    old_progress = progress_sweep
     old_post, old_loop, old_mutate = send_mod.post, loops.loop_for_lane, store.mutate
     old_log_disabled = log.disabled
     try:
         store.inflight_all = lambda: inflight
         monitor.update_board = lambda: board_updates.append(True)
+        globals()["progress_sweep"] = lambda now: sweep_events.append("progress")
         globals()["stalled_wake"] = lambda lane, now: (
             sweep_events.append("check:" + lane) or
             ({"pid": 12, "quiet_s": 601, "wake_log": "/tmp/wake"}
@@ -531,13 +622,14 @@ def _body():
     finally:
         store.inflight_all, monitor.update_board = old_inflight, old_update
         globals()["stalled_wake"] = old_stalled
+        globals()["progress_sweep"] = old_progress
         send_mod.post, loops.loop_for_lane, store.mutate = old_post, old_loop, old_mutate
         log.disabled = old_log_disabled
     expected_alert = prompts.STALLED_WAKE_ALERT.format(
         lane="lane-a", pid=12, quiet_min=10, wake_log="/tmp/wake")
     if (board_updates == [True, True]
             and sweep_events == ["check:lane-a", "check:lane-b", "post:" + expected_alert,
-                                 "post-failed"]
+                                 "progress", "post-failed", "progress"]
             and inflight["lane-a"].get("alerted") is True
             and "alerted" not in inflight["lane-b"]
             and "alerted" not in retry_inflight["lane-c"]):

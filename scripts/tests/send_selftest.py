@@ -123,6 +123,27 @@ def _body():
         globals()["_ready"] = old_ready
         api.window, api.request, api.check = old_window, old_request, old_check
 
+    old_ready, old_request, old_check = _ready, api.request, api.check
+    calls = []
+    try:
+        globals()["_ready"] = lambda as_name: {"name": as_name}
+        api.request = lambda cfg, method, path: calls.append((cfg, method, path)) or {
+            "result": "success"}
+        api.check = lambda payload, what: payload
+        for as_name, message_id in cases.DELETES:
+            got = delete(as_name, message_id)
+            call = calls.pop(0)
+            wanted = ({"name": as_name}, "DELETE", "/api/v1/messages/%d" % message_id)
+            if got == message_id and call == wanted:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL delete(%r, %r) -> %r call %r, wanted %r" %
+                      (as_name, message_id, got, call, wanted))
+    finally:
+        globals()["_ready"] = old_ready
+        api.request, api.check = old_request, old_check
+
     # board_message drives the real post/update doors, so a row proves which one was spent.
     old_post, old_update, old_current = post, update, current_content
     for label, message_id, live, body, expected, expected_call in cases.BOARD_MESSAGES:

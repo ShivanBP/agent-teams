@@ -206,6 +206,9 @@ def refresh_topic(as_name, stream_id, channel, topic, fetch_fn=None, model_fn=No
     rendered["ts"] = time.time() if now_ts is None else now_ts
 
     def save(data):
+        stored = data.get(key, {}).get("anchor_id") or 0
+        if stored >= next_anchor:
+            return
         data[key] = rendered
 
     mutate_fn("digests", save)

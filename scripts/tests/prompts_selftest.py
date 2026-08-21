@@ -12,6 +12,9 @@ def run(module):
 
 
 def _body():
+    import os
+    import time
+
     import tests.cases as cases
 
     passed = failed = 0
@@ -40,14 +43,34 @@ def _body():
             failed += 1
             print("FAIL %s missing %r" % (attr, substring))
 
-    for body, record, notice, domain, expected in cases.WAKE_PROMPTS:
-        got = wake_prompt(body, record, notice, domain)
+    for body, record, notice, domain, kill_at, expected in cases.WAKE_PROMPTS:
+        got = wake_prompt(body, record, notice, domain, kill_at)
         if got == expected:
             passed += 1
         else:
             failed += 1
-            print("FAIL wake_prompt(%r, %r, %r, %r) -> %r wanted %r" %
-                  (body, record, notice, domain, got, expected))
+            print("FAIL wake_prompt(%r, %r, %r, %r, %r) -> %r wanted %r" %
+                  (body, record, notice, domain, kill_at, got, expected))
+
+    # Read in UTC: the rows name a wall clock, and the runner's timeout is wall time.
+    saved_tz = os.environ.get("TZ")
+    os.environ["TZ"] = "UTC"
+    time.tzset()
+    try:
+        for started, timeout, expected in cases.KILL_CLOCKS:
+            got = kill_clock(started, timeout)
+            if got == expected:
+                passed += 1
+            else:
+                failed += 1
+                print("FAIL kill_clock(%r, %r) -> %r wanted %r" %
+                      (started, timeout, got, expected))
+    finally:
+        if saved_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved_tz
+        time.tzset()
 
     for body, notice, expected in cases.NOTICED_REPLIES:
         got = with_notice(body, notice)

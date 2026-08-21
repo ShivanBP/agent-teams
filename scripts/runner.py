@@ -132,15 +132,18 @@ def last_said(lane):
     return None
 
 
-def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=subprocess.DEVNULL,
-               tee_stderr=False):
+def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin_text=None, tee_stderr=False):
     stderr_log = wake_log.with_suffix(".err") if wake_log is not None and tee_stderr else None
-    # Without DEVNULL an unattended CLI can read or hold the listener's stdin open and block
-    # (Peter, 2026-08-16).
-    kwargs = {
-        "cwd": str(cwd), "env": env,
-        "text": True, "timeout": timeout, "stdin": stdin,
-    }
+    kwargs = {"cwd": str(cwd), "env": env, "text": True, "timeout": timeout}
+    if stdin_text is None:
+        # Without DEVNULL an unattended CLI can read or hold the listener's stdin open and block
+        # (Peter, 2026-08-16).
+        kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        # The brief goes down stdin, never argv: in argv it is in every ps listing on the Mac,
+        # and a sibling wake's pkill -f matches whatever word of it the pattern shares
+        # (Archie, 2026-08-20).
+        kwargs["input"] = stdin_text
     if wake_log is None:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
         return proc, proc.stdout
@@ -155,8 +158,9 @@ def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin=subprocess.DEVNULL,
     return proc, wake_log.read_text()
 
 
-def _build_cmd(persona, model, session, effort, prompt="hi"):
-    """claude -p --agent <persona> with realtime JSON events and one terminal result."""
+def _build_cmd(persona, model, session, effort):
+    """claude -p --agent <persona> with realtime JSON events and one terminal result.
+    No prompt argument: with none, claude -p reads it from stdin."""
     # headless has nobody to approve, and an untrusted cwd (a build worktree) fences Bash off
     cmd = [constants.CLAUDE_BIN, "-p", "--dangerously-skip-permissions",
            "--output-format", "stream-json", "--verbose", "--agent", persona]
@@ -166,7 +170,6 @@ def _build_cmd(persona, model, session, effort, prompt="hi"):
         cmd += ["--resume", session]
     if effort:
         cmd += ["--effort", effort]
-    cmd.append(prompt)
     return cmd
 
 
@@ -200,7 +203,9 @@ def _parse_claude_stream(output):
     return _parse(terminal)
 
 
-def _build_cmd_codex(model, session, effort, output_path, prompt="hi"):
+def _build_cmd_codex(model, session, effort, output_path):
+    """No prompt argument: codex exec reads it from stdin when none is given. A bare `-`
+    reads stdin too, but under `exec resume` its parser takes it for a flag."""
     cmd = [constants.CODEX_BIN, "exec"]
     if session:
         cmd.append("resume")
@@ -216,11 +221,13 @@ def _build_cmd_codex(model, session, effort, output_path, prompt="hi"):
     ]
     if session:
         cmd.append(session)
-    cmd.append(prompt)
     return cmd
 
 
-def _build_cmd_agy(model, session, effort, cwd, timeout, prompt="hi"):
+def _build_cmd_agy(model, session, effort, cwd, timeout):
+    """Alone among the four, agy has no text-stdin mode: --print wants its prompt as a value
+    and rejects an empty one. Its stream-json input format reads the brief off stdin instead,
+    one NDJSON message, and needs no --print of its own."""
     cmd = [
         constants.AGY_BIN,
         "--dangerously-skip-permissions",
@@ -229,12 +236,21 @@ def _build_cmd_agy(model, session, effort, cwd, timeout, prompt="hi"):
         "--model", model,
         "--effort", effort,
         "--output-format", "stream-json",
+        "--input-format", "stream-json",
         "--print-timeout", "%ds" % timeout,
     ]
     if session:
         cmd += ["--conversation", session]
-    cmd += ["-p", prompt]
     return cmd
+
+
+def _agy_stdin(prompt):
+    """The one NDJSON line agy's stream-json input accepts; any other event name is warned
+    about and dropped, leaving the wake with no turn at all."""
+    return json.dumps({
+        "event": "user",
+        "message": {"role": "user", "content": [{"type": "text", "text": prompt}]},
+    }) + "\n"
 
 
 def _parse_codex(text):
@@ -382,14 +398,14 @@ def _wake_identity(persona, identity):
 def _run_claude(persona, prompt, *, model, effort, session, cwd, timeout, identity,
                 wake_log=None):
     run_prompt = _run_prompt("claude", persona, prompt, session, identity)
-    cmd = _build_cmd(persona, model, session, effort, run_prompt)
+    cmd = _build_cmd(persona, model, session, effort)
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     env["CLAUDE_CODE_DISABLE_TERMINAL_TITLE"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     proc, stdout = _run_jsonl(
         cmd, cwd=Path(cwd or REPO_DIR).resolve(), env=env, timeout=timeout,
-        wake_log=wake_log)
+        wake_log=wake_log, stdin_text=run_prompt)
     if proc.returncode != 0:
         raise RuntimeError(
             "claude -p failed (exit %d) for persona %s: %s" %
@@ -411,12 +427,12 @@ def _run_codex(persona, prompt, *, model, effort, session, cwd, timeout, identit
     final.close()
     try:
         run_prompt = _run_prompt("codex", persona, prompt, session, identity)
-        cmd = _build_cmd_codex(model, session, effort, final_path, run_prompt)
+        cmd = _build_cmd_codex(model, session, effort, final_path)
         env = dict(os.environ)
         env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
         proc, stdout = _run_jsonl(
             cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
-            tee_stderr=True)
+            stdin_text=run_prompt, tee_stderr=True)
         if proc.returncode != 0:
             raise RuntimeError(
                 "codex exec failed (exit %d) for persona %s: %s" %
@@ -434,7 +450,8 @@ def _run_codex(persona, prompt, *, model, effort, session, cwd, timeout, identit
             pass
 
 
-def _build_cmd_opencode(model, session, effort, cwd, prompt="hi"):
+def _build_cmd_opencode(model, session, effort, cwd):
+    """No message argument: with none, opencode run reads it from stdin."""
     cmd = [constants.OPENCODE_BIN, "run", "--format", "json", "--auto"]
     if model:
         cmd += ["--model", model]
@@ -444,7 +461,6 @@ def _build_cmd_opencode(model, session, effort, cwd, prompt="hi"):
         cmd += ["--variant", effort]
     if cwd:
         cmd += ["--dir", str(cwd)]
-    cmd.append(prompt)
     return cmd
 
 
@@ -498,13 +514,13 @@ def _run_opencode(persona, prompt, *, model, effort, session, cwd, timeout, iden
                   wake_log=None):
     run_cwd = Path(cwd or REPO_DIR).resolve()
     run_prompt = _run_prompt("opencode", persona, prompt, session, identity)
-    cmd = _build_cmd_opencode(model, session, effort, run_cwd, run_prompt)
+    cmd = _build_cmd_opencode(model, session, effort, run_cwd)
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     env["OPENCODE_DISABLE_CLAUDE_CODE"] = "true"
     proc, stdout = _run_jsonl(
         cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
-        tee_stderr=True)
+        stdin_text=run_prompt, tee_stderr=True)
     if proc.returncode != 0:
         raise RuntimeError(
             "opencode run failed (exit %d) for persona %s: %s" %
@@ -518,13 +534,13 @@ def _run_agy(persona, prompt, *, model, effort, session, cwd, timeout, identity,
              wake_log=None):
     run_cwd = Path(cwd or REPO_DIR).resolve()
     run_prompt = _run_prompt("agy", persona, prompt, session, identity)
-    cmd = _build_cmd_agy(model, session, effort, run_cwd, timeout, run_prompt)
+    cmd = _build_cmd_agy(model, session, effort, run_cwd, timeout)
     env = dict(os.environ)
     env["AGENT_TEAM_IDENTITY"] = _wake_identity(persona, identity)
     for attempt in range(constants.AGY_TRANSIENT_RETRIES + 1):
         proc, stdout = _run_jsonl(
             cmd, cwd=run_cwd, env=env, timeout=timeout, wake_log=wake_log,
-            tee_stderr=True)
+            stdin_text=_agy_stdin(run_prompt), tee_stderr=True)
         if proc.returncode == 0:
             break
         failure = _failure_output(proc.stderr, stdout)

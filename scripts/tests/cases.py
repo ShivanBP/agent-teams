@@ -354,7 +354,8 @@ INFLIGHT_GUARDED_CLEARS = [
     ("bare clear", None, False),
 ]
 
-# (persona, model, session, effort, expected argv) for runner._build_cmd
+# (persona, model, session, effort, expected argv) for runner._build_cmd. No argv holds the
+# brief any more: every harness reads it off stdin.
 FAILURE_OUTPUTS = [
     ("", '{"error":"quota"}\n', '{"error":"quota"}'),
     (" warning\n", " detail\n", "warning\ndetail"),
@@ -365,17 +366,17 @@ FAILURE_OUTPUTS = [
 RUNNER_CMDS = [
     ("peter", None, None, None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "stream-json", "--verbose", "--agent", "peter", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "peter"]),
     ("bob", "sonnet", None, None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "stream-json", "--verbose", "--agent", "bob", "--model", "sonnet", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "bob", "--model", "sonnet"]),
     ("archie", "fable", "sid-123", "high",
      ["claude", "-p", "--dangerously-skip-permissions",
       "--output-format", "stream-json", "--verbose", "--agent", "archie",
-      "--model", "fable", "--resume", "sid-123", "--effort", "high", "hi"]),
+      "--model", "fable", "--resume", "sid-123", "--effort", "high"]),
     ("eve", None, "sid-9", None,
      ["claude", "-p", "--dangerously-skip-permissions",
-      "--output-format", "stream-json", "--verbose", "--agent", "eve", "--resume", "sid-9", "hi"]),
+      "--output-format", "stream-json", "--verbose", "--agent", "eve", "--resume", "sid-9"]),
 ]
 
 CODEX_RUNNER_CMDS = [
@@ -388,7 +389,7 @@ CODEX_RUNNER_CMDS = [
             "-c", "features.memories=false",
             "-c", 'sandbox_mode="danger-full-access"',
             "-c", 'model_reasoning_effort="high"',
-            "-m", "gpt-5.6-sol", "-o", "/tmp/final.txt", "hi",
+            "-m", "gpt-5.6-sol", "-o", "/tmp/final.txt",
         ],
     ),
     (
@@ -401,15 +402,15 @@ CODEX_RUNNER_CMDS = [
             "-c", 'sandbox_mode="danger-full-access"',
             "-c", 'model_reasoning_effort="medium"',
             "-m", "gpt-5.6-sol", "-o", "/tmp/resume.txt",
-            "019ffcaf-probe", "hi",
+            "019ffcaf-probe",
         ],
     ),
 ]
 
 # (provider, --model value, --effort value, fragments the built command must contain) for
 # runner.run: a hand-driven run that omits either flag takes the harness default instead of
-# handing subprocess a None. Fragments match against the joined command minus its prompt, so
-# each one proves the flag and its value stayed adjacent.
+# handing subprocess a None. Fragments match against the joined command, so each one proves
+# the flag and its value stayed adjacent.
 RUNNER_DEFAULT_FALLBACKS = [
     ("codex", None, None, ("-m gpt-5.6-sol", 'model_reasoning_effort="high"')),
     ("codex", "gpt-5.6-sol-mini", "low", ("-m gpt-5.6-sol-mini", 'model_reasoning_effort="low"')),
@@ -425,7 +426,7 @@ AGY_RUNNER_CMDS = [
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/probe", "--model", "gemini-3.7-flash",
             "--effort", "high", "--output-format", "stream-json",
-            "--print-timeout", "1800s", "-p", "hi",
+            "--input-format", "stream-json", "--print-timeout", "1800s",
         ],
     ),
     (
@@ -435,10 +436,29 @@ AGY_RUNNER_CMDS = [
             "--dangerously-skip-permissions", "--disable-slash-commands",
             "--add-dir", "/tmp/resume", "--model", "gemini-3.7-flash",
             "--effort", "medium", "--output-format", "stream-json",
-            "--print-timeout", "90s", "--conversation", "agy-session-1", "-p", "hi",
+            "--input-format", "stream-json", "--print-timeout", "90s",
+            "--conversation", "agy-session-1",
         ],
     ),
 ]
+
+# (prompt, the decoded NDJSON message) for runner._agy_stdin. agy warns and drops any other
+# event name, which would leave the wake with no turn at all.
+AGY_STDIN_LINES = [
+    ("wake brief", {"event": "user",
+                    "message": {"role": "user",
+                                "content": [{"type": "text", "text": "wake brief"}]}}),
+    ("line one\nline two", {"event": "user",
+                            "message": {"role": "user",
+                                        "content": [{"type": "text",
+                                                     "text": "line one\nline two"}]}}),
+]
+
+# Every harness takes the brief on stdin and none of them in argv: a sibling wake's
+# pkill -f matched a word of a brief sitting in ps and killed the wake (Archie, 2026-08-20).
+# Both a fresh wake and a resumed one, since only the fresh one carries the framing.
+STDIN_BRIEF_PROVIDERS = ("claude", "codex", "agy", "opencode")
+STDIN_BRIEF_SENTINEL = "pkill-bait-server.py"
 
 AGY_TRANSIENT_SESSION = "agy-retry"
 AGY_TRANSIENT_STDOUT = (
@@ -1416,7 +1436,7 @@ OPENCODE_RUNNER_CMDS = [
             str(HOME / ".opencode" / "bin" / "opencode"),
             "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
-            "--variant", "high", "--dir", "/tmp/probe", "hi",
+            "--variant", "high", "--dir", "/tmp/probe",
         ],
     ),
     (
@@ -1425,14 +1445,17 @@ OPENCODE_RUNNER_CMDS = [
             str(HOME / ".opencode" / "bin" / "opencode"),
             "run", "--format", "json", "--auto",
             "--model", "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro",
-            "--session", "sid-oc-1", "hi",
+            "--session", "sid-oc-1",
         ],
     ),
 ]
 
+# (inherited OPENCODE_DISABLE_CLAUDE_CODE, the value the spawn gets, what its stdin carries).
+# The brief now feeds stdin, which subprocess closes after writing: the CLI still cannot read
+# or hold the listener's own stdin open.
 OPENCODE_ENVIRONMENTS = [
-    (None, "true", "devnull"),
-    ("false", "true", "devnull"),
+    (None, "true", "brief"),
+    ("false", "true", "brief"),
 ]
 
 # Captured from opencode run --format json on this Mac, 2026-08-13.
@@ -1572,6 +1595,9 @@ PROMPT_CONTAINS = [
     ("RECORD_LINE", "{body}"),
     ("TAG_NOT_OPERATOR", "{sender}"),
     ("DOMAIN_LINE", "{root}"),
+    ("WAKE_KILL_LINE", "{kill_at}"),
+    ("WAKE_KILL_LINE", "This wake is killed at"),
+    ("WAKE_KILL_LINE", "commit what is done and report what remains"),
     ("DOMAIN_LINE", "skills/"),
     ("DOMAIN_LINE", "CLAUDE.md"),
     ("TAG_NOT_OPERATOR", "not the operator"),
@@ -1634,30 +1660,47 @@ STATE_BLOCKS = [
       "Kicks today: 2", "Spend today: $0.75"]),
 ]
 
-# (body, record, handoff notice, domain root, expected) for prompts.wake_prompt. An unmapped
-# channel passes "" and the header is byte-identical to the old one: the line is additive.
+# (body, record, handoff notice, domain root, kill time, expected) for prompts.wake_prompt. An
+# unmapped channel with no kill time passes "" for both and the header is byte-identical to the
+# old one: each line is additive. Kill time precedes the domain line.
 _DOMAIN_HEADER = prompts.WAKE_HEADER + "\n" + prompts.DOMAIN_LINE.format(root="/tmp/domain")
+_KILL_HEADER = prompts.WAKE_HEADER + "\n" + prompts.WAKE_KILL_LINE.format(kill_at="16:14")
 WAKE_PROMPTS = [
-    ("do the thing", "", "", "",
+    ("do the thing", "", "", "", "",
      prompts.WAKE_HEADER + "\n\ndo the thing"),
-    ("do the thing", "topic record here", "", "",
+    ("do the thing", "topic record here", "", "", "",
      prompts.WAKE_HEADER + "\n\ndo the thing\n\ntopic record here"),
-    ("do the thing", "topic record here", "stale warning", "",
+    ("do the thing", "topic record here", "stale warning", "", "",
      prompts.WAKE_HEADER + "\n\nstale warning\n\ndo the thing\n\ntopic record here"),
-    ("do the thing", "", "", "/tmp/domain",
+    ("do the thing", "", "", "/tmp/domain", "",
      _DOMAIN_HEADER + "\n\ndo the thing"),
-    ("do the thing", "topic record here", "stale warning", "/tmp/domain",
+    ("do the thing", "topic record here", "stale warning", "/tmp/domain", "",
      _DOMAIN_HEADER + "\n\nstale warning\n\ndo the thing\n\ntopic record here"),
+    ("do the thing", "", "", "", "16:14",
+     _KILL_HEADER + "\n\ndo the thing"),
+    ("do the thing", "topic record here", "stale warning", "/tmp/domain", "16:14",
+     _KILL_HEADER + "\n" + prompts.DOMAIN_LINE.format(root="/tmp/domain")
+     + "\n\nstale warning\n\ndo the thing\n\ntopic record here"),
+]
+
+# (start epoch, timeout seconds, the clock the wake is told) for prompts.kill_clock, read in
+# UTC by the driver. Row three crosses midnight, where naive arithmetic on the hour breaks.
+KILL_CLOCKS = [
+    (0, 1800, "00:30"),
+    (0, 0, "00:00"),
+    (1786_000_000, 1800, "07:36"),
+    (23 * 3600 + 1800, 1800, "00:00"),
 ]
 
 # (label, channel, root constants.domain_root returns, substrings the prompt must and must not
-# carry) for the listener call site. The lookup is stubbed, so the row holds in a clone whose
-# gitignored domains.json does not exist: it asserts the wiring, not this estate's map.
+# carry) for the listener call site: the domain line and the kill time both reach the wake from
+# here. The lookup is stubbed, so the row holds in a clone whose gitignored domains.json does
+# not exist: it asserts the wiring, not this estate's map.
 WAKE_DOMAIN_LINES = [
     ("mapped channel", "somewhere", "/tmp/domain",
-     ["/tmp/domain", "read its CLAUDE.md"], []),
+     ["/tmp/domain", "read its CLAUDE.md", "This wake is killed at"], []),
     ("unmapped channel", "elsewhere", "",
-     [], ["read its CLAUDE.md"]),
+     ["This wake is killed at"], ["read its CLAUDE.md"]),
 ]
 
 NOTICED_REPLIES = [

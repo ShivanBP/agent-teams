@@ -36,6 +36,40 @@ def _body():
         else:
             failed += 1
             print("FAIL read window newer=%r -> %r wanted %r" % (newer, params, expected))
+    for args, expected in cases.READ_NARROWS:
+        got = _narrow(*args)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _narrow%r -> %r wanted %r" % (args, got, expected))
+    got = render_channels(cases.CHANNEL_LIST[0])
+    if got == cases.CHANNEL_LIST[1]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL render_channels(...) -> %r" % got)
+    got = render_topics(cases.TOPIC_LIST[0], cases.TOPIC_LIST[1])
+    if got == cases.TOPIC_LIST[2]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL render_topics(...) -> %r" % got)
+    got = render_cross_channel(
+        cases.CROSS_CHANNEL_MESSAGES, "https://example.zulipchat.com", ids=True)
+    lines = got.splitlines()
+    if (len(lines) == 3 and "#setup > new" in lines[1] and lines[1].endswith("#2")
+            and "#general > old" in lines[2] and lines[2].endswith("#1")):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL render_cross_channel ordering/ids -> %r" % got)
+    got = render([cases.CROSS_CHANNEL_MESSAGES[0]], ids=True)
+    if got.splitlines()[-1].endswith("#1"):
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL render ids suffix -> %r" % got)
     for messages, expected in cases.TOPIC_LINE_MESSAGES:
         got = topic_line(messages, "https://example.zulipchat.com")
         if got == expected:

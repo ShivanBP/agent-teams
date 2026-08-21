@@ -17,22 +17,28 @@ def _window(limit, newer):
     return params
 
 
-def fetch(as_name, channel, topic=None, search=None, limit=constants.READ_LIMIT, anchor="newest",
-          newer=False):
-    """Self-guarding: enforces identity itself, matching send.py's post/react."""
-    api.enforce_identity(as_name)
-    cfg = api.load(as_name)
-    sid = api.stream_id(as_name, channel)
-    if sid is None:
-        return None, "narrow_miss"
-    narrow = [{"operator": "channel", "operand": sid}]
+def _narrow(channel_id=None, topic=None, search=None):
+    narrow = [{"operator": "channel", "operand": channel_id}] if channel_id is not None else [
+        {"operator": "channels", "operand": "public"}
+    ]
     if topic:
         narrow.append({"operator": "topic", "operand": topic})
     if search:
         narrow.append({"operator": "search", "operand": search})
+    return narrow
+
+
+def fetch(as_name, channel=None, topic=None, search=None, limit=constants.READ_LIMIT,
+          anchor="newest", newer=False):
+    """Self-guarding: enforces identity itself, matching send.py's post/react."""
+    api.enforce_identity(as_name)
+    cfg = api.load(as_name)
+    sid = api.stream_id(as_name, channel) if channel else None
+    if channel and sid is None:
+        return None, "narrow_miss"
     params = dict({
         "anchor": anchor,
-        "narrow": narrow,
+        "narrow": _narrow(sid, topic, search),
         "apply_markdown": False,
     }, **_window(limit, newer))
     payload = api.request(
@@ -50,7 +56,7 @@ def indent(content):
     return str(content).replace("\n", "\n    ")
 
 
-def render(messages, site=None):
+def render(messages, site=None, ids=False):
     """site set (--search only) appends a permalink per hit, so a search result can be cited
     without hand-building the #narrow URL."""
     lines = [prompts.RECORD_HEADER]
@@ -59,6 +65,8 @@ def render(messages, site=None):
         line = prompts.RECORD_LINE.format(
             stamp=stamp, sender=msg.get("sender_full_name", "?"),
             body=indent(msg.get("content", "")))
+        if ids:
+            line += " #%s" % msg["id"]
         if site:
             line += "\n    " + api.permalink(
                 site, msg.get("stream_id"), msg.get("display_recipient", ""),
@@ -66,6 +74,36 @@ def render(messages, site=None):
             )
         lines.append(line)
     return "\n".join(lines)
+
+
+def render_cross_channel(messages, site, ids=False):
+    lines = [prompts.RECORD_HEADER]
+    for msg in sorted(messages, key=lambda row: row["timestamp"], reverse=True):
+        stamp = datetime.datetime.fromtimestamp(msg["timestamp"]).strftime("%Y-%m-%d %H:%M")
+        body = " ".join(str(msg.get("content", "")).split())[:140]
+        lines.append(prompts.CROSS_CHANNEL_RECORD_LINE.format(
+            stamp=stamp,
+            channel=msg.get("display_recipient", "?"),
+            topic=msg.get("subject", "?"),
+            sender=msg.get("sender_full_name", "?"),
+            body=body,
+            url=api.permalink(
+                site, msg.get("stream_id"), msg.get("display_recipient", ""),
+                msg.get("subject", ""), msg["id"],
+            ),
+            message_id=" #%s" % msg["id"] if ids else "",
+        ))
+    return "\n".join(lines)
+
+
+def render_channels(streams):
+    return "\n".join(prompts.CHANNEL_LIST_LINE.format(
+        name=stream["name"], description=stream.get("description", "")) for stream in streams)
+
+
+def render_topics(channel, topics):
+    return "\n".join(prompts.TOPIC_LIST_LINE.format(
+        channel=channel, topic=topic["name"]) for topic in topics)
 
 
 def topic_line(messages, site):
@@ -108,6 +146,8 @@ def main():
     ap.add_argument("--channel")
     ap.add_argument("--topic")
     ap.add_argument("--search")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--ids", action="store_true")
     ap.add_argument("--limit", type=int, default=constants.READ_LIMIT)
     ap.add_argument("--anchor", default="newest")
     ap.add_argument("--attachment", metavar="URL",
@@ -131,8 +171,18 @@ def main():
             raise SystemExit(1)
         print(render_attachment(*got, out=args.out))
         return
-    if not args.as_name or not args.channel:
-        ap.error("--as and --channel are required")
+    if not args.as_name:
+        ap.error("--as is required")
+    if args.list:
+        api.enforce_identity(args.as_name)
+        if args.channel:
+            stream_id = api.stream_id(args.as_name, args.channel)
+            if stream_id is None:
+                api.refuse_narrow_miss(args.as_name, args.channel)
+            print(render_topics(args.channel, api.topics(args.as_name, stream_id)))
+        else:
+            print(render_channels(api.visible_streams(args.as_name, details=True)))
+        return
     messages, err = fetch(
         args.as_name, args.channel, args.topic, args.search, args.limit, _anchor(args.anchor)
     )
@@ -141,8 +191,11 @@ def main():
     if err is not None:
         sys.stderr.write(str(err) + "\n")
         raise SystemExit(1)
-    site = api.load(args.as_name)["site"] if args.search or args.topic else None
-    print(render(messages, site if args.search else None))
+    site = api.load(args.as_name)["site"] if args.search or args.topic or not args.channel else None
+    if args.channel:
+        print(render(messages, site if args.search else None, ids=args.ids))
+    else:
+        print(render_cross_channel(messages, site, ids=args.ids))
     if args.topic:
         line = topic_line(messages, site)
         if line:

@@ -20,6 +20,7 @@ POLL_SEC=15
 CONFIRM_TIMEOUT_SEC=30
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="${AGENT_TEAM_STATE_DIR:-${AGENT_TEAM_CONFIG_DIR:-$HOME/.config/agent-team}/state}"
 LOGS_DIR="${AGENT_TEAM_LOGS_DIR:-$HOME/.config/agent-team/logs}"
 LOG_PATH="$LOGS_DIR/listener.err.log"  # launchd routes the logger's stderr here
 LABEL="$(launchd_label)"
@@ -34,6 +35,7 @@ while true; do
     n="$(inflight_count)"
     if [ "$n" -eq 0 ]; then
         echo "restart.sh: drained, 0 inflight after ${elapsed}s"
+        find "$STATE_DIR" -name 'lane-*.lock' -delete
         break
     fi
     if [ "$elapsed" -ge "$TIMEOUT_SEC" ]; then

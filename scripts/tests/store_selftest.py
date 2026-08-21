@@ -12,9 +12,36 @@ def run(module):
 
 
 def _body():
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
     import tests.cases as cases
 
     passed = failed = 0
+
+    original_state_dir = STATE_DIR
+    with TemporaryDirectory() as temp_dir:
+        globals()["STATE_DIR"] = Path(temp_dir)
+        bad_path = _path("corrupt-probe")
+        bad_path.write_bytes(b"{bad")
+        old_disabled = log.disabled
+        try:
+            log.disabled = True
+            empty = load("corrupt-probe")
+            moved = list(bad_path.parent.glob("corrupt-probe.json.corrupt-*"))
+            moved_bytes = [path.read_bytes() for path in moved]
+            mutate("corrupt-probe", lambda data: data.update({"clean": True}))
+            clean = load("corrupt-probe")
+        finally:
+            log.disabled = old_disabled
+            globals()["STATE_DIR"] = original_state_dir
+    if empty == {} and moved_bytes == [b"{bad"] \
+            and clean == {"clean": True}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL corrupt state recovery -> empty=%r moved=%r clean=%r" %
+              (empty, moved, clean))
 
     for stream_id, topic, persona, expected in cases.LANE_KEYS:
         got = lane_key(stream_id, topic, persona)

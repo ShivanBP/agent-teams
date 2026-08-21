@@ -5,6 +5,7 @@ import datetime
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import sys
 import time
@@ -12,6 +13,7 @@ import time
 import constants
 
 STATE_DIR = constants.STATE_DIR
+log = logging.getLogger("agent-team.store")
 
 
 def _path(name):
@@ -20,6 +22,17 @@ def _path(name):
 
 def _lock_path(name):
     return STATE_DIR / ("%s.lock" % name)
+
+
+def _read(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        corrupt = path.with_name("%s.corrupt-%d" % (path.name, int(time.time())))
+        path.rename(corrupt)
+        log.error("moved corrupt state file %s to %s", path, corrupt)
+        return {}
 
 
 @contextlib.contextmanager
@@ -51,8 +64,7 @@ def load(name):
     path = _path(name)
     if not path.is_file():
         return {}
-    with open(path) as f:
-        return json.load(f)
+    return _read(path)
 
 
 def mutate(name, fn):
@@ -64,10 +76,7 @@ def mutate(name, fn):
     with _locked(name):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         path = _path(name)
-        data = {}
-        if path.is_file():
-            with open(path) as f:
-                data = json.load(f)
+        data = _read(path) if path.is_file() else {}
         result = fn(data)
         if isinstance(result, dict):
             data = result

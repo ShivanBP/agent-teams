@@ -474,7 +474,7 @@ def update_board(as_name=constants.BRIDGE_IDENTITY, content=None, contents=None)
         try:
             new_id, changed = send_mod.board_message(
                 as_name, constants.STATUS_STREAM, constants.BOARD_TOPIC, body, message_id)
-            _board_working(state_name, new_id if message_id is None else None)
+            _board_working(state_name, new_id if new_id != message_id else None)
             results[name] = (new_id, changed)
         except (Exception, SystemExit):
             log.exception("board section %s failed to update", name)

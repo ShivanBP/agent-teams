@@ -258,6 +258,26 @@ def _body():
         print("FAIL update_board sequence: %r %r %r split=%r states=%r boards=%r" %
               (first, unchanged, changed, split, states, boards))
 
+    states = {"board": {"message_id": 99, "failed": True}}
+    saved = store.load, store.mutate, send_mod.board_message
+    try:
+        store.load = lambda name: dict(states.get(name, {}))
+
+        def mutate_replacement_state(name, fn):
+            states[name] = fn(dict(states.get(name, {})))
+
+        store.mutate = mutate_replacement_state
+        send_mod.board_message = lambda *args: (199, True)
+        replacement = update_board(content="replacement")
+    finally:
+        store.load, store.mutate, send_mod.board_message = saved
+    if replacement == {"activity": (199, True)} \
+            and states == {"board": {"message_id": 199}}:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL update_board replacement id: %r states=%r" % (replacement, states))
+
     states = {
         "board": {"message_id": 99},
         "board-workshop": {"message_id": 100},

@@ -36,5 +36,30 @@ def _body():
         else:
             failed += 1
             print("FAIL read window newer=%r -> %r wanted %r" % (newer, params, expected))
+    for messages, expected in cases.TOPIC_LINE_MESSAGES:
+        got = topic_line(messages, "https://example.zulipchat.com")
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL topic_line(...) -> %r, wanted %r" % (got, expected))
+    for ctype, data, expected in cases.ATTACHMENT_RENDERS:
+        got = render_attachment(ctype, data, "LINK")
+        if got == "\n".join(expected):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL render_attachment(%r) -> %r" % (ctype, got))
+    # --out is the only side effect in this module, so a row drives it rather than asserting source.
+    import tempfile
+    with tempfile.TemporaryDirectory() as box:
+        target = Path(box) / "shot.png"
+        payload = b"\x89PNG\r\n\x1a\n"
+        got = render_attachment("image/png", payload, "LINK", out=str(target))
+        if target.read_bytes() == payload and str(target) in got:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL render_attachment --out did not write the bytes: %r" % got)
     print("read.py selftest: %d PASS, %d FAIL" % (passed, failed))
     return 1 if failed else 0

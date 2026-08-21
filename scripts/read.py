@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import sys
+from pathlib import Path
 
 import api
 import constants
@@ -67,6 +68,30 @@ def render(messages, site=None):
     return "\n".join(lines)
 
 
+def topic_line(messages, site):
+    """One durable link for the whole topic. Zulip's with/ operator follows a rename or a move;
+    near/ pins the one message it names, which a topic read is not about."""
+    if not messages:
+        return None
+    last = messages[-1]
+    return prompts.TOPIC_PERMALINK.format(url=api.permalink(
+        site, last.get("stream_id"), last.get("display_recipient", ""),
+        last.get("subject", ""), last["id"], operator="with"))
+
+
+def render_attachment(ctype, data, link, out=None):
+    """What it is, always; the text itself when it is text. Anything else stays bytes and only
+    reaches a caller that named --out, so an image never becomes megabytes of stdout."""
+    lines = [prompts.ATTACHMENT_HEAD.format(ctype=ctype, size=len(data), url=link)]
+    if out:
+        Path(out).write_bytes(data)
+        lines.append(prompts.ATTACHMENT_SAVED.format(path=out))
+    if ctype.split(";")[0].strip().startswith("text/"):
+        lines.append("")
+        lines.append(data.decode("utf-8", errors="replace"))
+    return "\n".join(lines)
+
+
 def _selftest():
     from tests import read_selftest
     return read_selftest.run(sys.modules[__name__])
@@ -85,9 +110,27 @@ def main():
     ap.add_argument("--search")
     ap.add_argument("--limit", type=int, default=constants.READ_LIMIT)
     ap.add_argument("--anchor", default="newest")
+    ap.add_argument("--attachment", metavar="URL",
+                    help="Fetch one Zulip upload by its link and print what it is; text is "
+                         "printed whole. Needs --as and nothing else.")
+    ap.add_argument("--out", metavar="PATH",
+                    help="With --attachment, write the fetched bytes here.")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(_selftest())
+    if args.attachment:
+        if not args.as_name:
+            ap.error("--as is required")
+        api.enforce_identity(args.as_name)
+        got, err = api.attachment(args.as_name, args.attachment)
+        if err == "not_an_upload":
+            sys.stderr.write(prompts.ATTACHMENT_MISS.format(url=args.attachment) + "\n")
+            raise SystemExit(1)
+        if err is not None:
+            sys.stderr.write(str(err) + "\n")
+            raise SystemExit(1)
+        print(render_attachment(*got, out=args.out))
+        return
     if not args.as_name or not args.channel:
         ap.error("--as and --channel are required")
     messages, err = fetch(
@@ -98,8 +141,12 @@ def main():
     if err is not None:
         sys.stderr.write(str(err) + "\n")
         raise SystemExit(1)
-    site = api.load(args.as_name)["site"] if args.search else None
-    print(render(messages, site))
+    site = api.load(args.as_name)["site"] if args.search or args.topic else None
+    print(render(messages, site if args.search else None))
+    if args.topic:
+        line = topic_line(messages, site)
+        if line:
+            print(line)
 
 
 if __name__ == "__main__":

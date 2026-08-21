@@ -30,6 +30,20 @@ def _body():
         else:
             failed += 1
             print("FAIL permalink(%r, %r, %r) -> %r, wanted %r" % (sid, sname, topic, got, expected))
+    for site, sid, sname, topic, mid, expected in cases.TOPIC_PERMALINKS:
+        got = permalink(site, sid, sname, topic, mid, operator="with")
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL permalink(..., operator='with') -> %r, wanted %r" % (got, expected))
+    for url, expected in cases.UPLOAD_PATHS:
+        got = upload_path(url)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL upload_path(%r) -> %r, wanted %r" % (url, got, expected))
     captured = {}
 
     class _Response:

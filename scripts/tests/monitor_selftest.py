@@ -96,6 +96,20 @@ def _body():
     else:
         failed += 1
         print("FAIL render_board(...) missing a required section or link")
+    saved_todo_sources = _loop_todos, _topic_todos
+    rendered_groups = []
+    try:
+        globals()["_loop_todos"] = lambda as_name: []
+        globals()["_topic_todos"] = lambda as_name, now_ts=None, groups=None: \
+            rendered_groups.append(groups) or []
+        render_board([], {}, digests={}, parked=[], groups=render_groups)
+    finally:
+        globals()["_loop_todos"], globals()["_topic_todos"] = saved_todo_sources
+    if rendered_groups == [render_groups]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL render_board groups did not reach _topic_todos: %r" % rendered_groups)
     parked_board = render_board(
         cases.BOARD_RENDER_LANES, got, cases.BOARD_RENDER_TOPICS,
         cases.BOARD_RENDER_DIGESTS, now_ts=200000, parked=cases.BOARD_RENDER_PARKED,

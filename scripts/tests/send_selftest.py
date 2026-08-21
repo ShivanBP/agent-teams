@@ -13,6 +13,7 @@ def run(module):
 
 def _body():
     import contextlib
+    import constants
     import io
 
     import api
@@ -34,6 +35,84 @@ def _body():
             failed += 1
             print("FAIL strip_persona_mentions(%r, %r) -> %r, wanted %r" %
                   (text, as_name, got, expected))
+    for as_name, text, keep, expected in cases.PERSONA_MENTION_KEEPS:
+        got = strip_persona_mentions(text, as_name, cases.PERSONA_MENTION_NAMES, keep=keep)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL strip_persona_mentions(%r, %r, keep=%r) -> %r, wanted %r" %
+                  (text, as_name, keep, got, expected))
+
+    # The post door applies relay and ask before the API call.
+    old_ready, old_window, old_request, old_check, old_sid = (
+        _ready, api.window, api.request, api.check, api.stream_id)
+    sent = []
+    try:
+        globals()["_ready"] = lambda as_name, enforce=True: {"name": as_name}
+        api.window = lambda as_name: 10000
+        api.stream_id = lambda name, channel: 7
+        api.request = lambda cfg, method, path, params: sent.append(params["content"]) or {"id": 9}
+        api.check = lambda payload, what: payload
+        sample = sorted(personas_mod.PERSONAS)[0]
+        mention = "@**%s**" % personas_mod.display_name(sample)
+        got = [
+            post(sample, "c", "t", mention),
+            post(sample, "c", "t", mention, relay=True),
+            post(sample, "c", "t", mention, ask=sample),
+        ]
+    finally:
+        globals()["_ready"] = old_ready
+        api.window, api.request, api.check, api.stream_id = old_window, old_request, old_check, old_sid
+    if got == [9, 9, 9] and sent == ["@" + ZWSP + mention[1:], mention, mention]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL post relay/ask -> ids=%r bodies=%r" % (got, sent))
+
+    # Drive the CLI: refusals must happen before post, and a valid ask must pass ask through.
+    old_argv, old_post, old_cli_sid = list(sys.argv), post, api.stream_id
+    roster = sorted(personas_mod.PERSONAS)
+    asker, target = roster[0], roster[1]
+    cli_rows = [
+        ("not post", asker, target, None, 2, None),
+        ("unknown", asker, "not-a-persona", "question", 3, None),
+        ("not-persona", constants.BRIDGE_IDENTITY, target, "question", 3, None),
+        ("other mention", asker, target,
+         "@**%s** and @**%s**" % (personas_mod.display_name(target),
+                                   personas_mod.display_name(roster[2])), 3, None),
+        ("valid", asker, target, "@**%s** question" % personas_mod.display_name(target),
+         0, target),
+    ]
+    for label, as_name, ask, body, expected_code, expected_ask in cli_rows:
+        calls = []
+        stderr = io.StringIO()
+        globals()["post"] = lambda *a, **k: calls.append((a, k)) or 9
+        api.stream_id = lambda *a: None
+        try:
+            sys.argv = ["send.py", "--as", as_name, "--channel", "c", "--topic", "t",
+                        "--ask", ask]
+            if body is None:
+                sys.argv.extend(["--react-to", "1", "--emoji", "eyes"])
+            else:
+                sys.argv.extend(["--body", body])
+            with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    main()
+                    code = 0
+                except SystemExit as exc:
+                    code = exc.code
+        finally:
+            sys.argv = list(old_argv)
+            globals()["post"] = old_post
+        got_ask = calls[0][1].get("ask") if calls else None
+        if code == expected_code and got_ask == expected_ask and bool(calls) == (expected_code == 0):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL --ask %s -> code=%r calls=%r stderr=%r" %
+                  (label, code, calls, stderr.getvalue()))
+    api.stream_id = old_cli_sid
     for path, index, exists, is_dir, size, is_symlink, expected in cases.ATTACHES:
         got = classify_attach(path, index, exists, is_dir, size, is_symlink)
         if got == expected:
@@ -162,7 +241,6 @@ def _body():
     finally:
         globals()["_ready"] = old_ready
         api.request, api.check, api.stream_id = old_request, old_check, old_sid
-    import constants
     saved_identity = constants.BRIDGE_IDENTITY
     try:
         for identity, as_name, expected in cases.VERB_GATE_RENAMED:

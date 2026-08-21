@@ -31,12 +31,20 @@ def strip_wildcards(text):
     return _WILDCARD.sub(lambda m: ZWSP.join(("@", "%s**%s**" % (m.group(1), m.group(2)))), text or "")
 
 
-def strip_persona_mentions(text, as_name, names=None):
-    """Persona posts cannot wake other personas; bridge-issued kicks retain real mentions."""
+def strip_persona_mentions(text, as_name, names=None, keep=None):
+    """Persona posts retain at most the one deliberate mention named by keep."""
     if as_name not in (personas_mod.PERSONAS if names is None else names):
         return text
     pattern = _PERSONA_MENTION if names is None else mention_pattern(names)
-    return pattern.sub(lambda m: ZWSP.join(("@", m.group(1))), text or "")
+
+    def replace(match):
+        named = match.group(1)[2:-2].split("|", 1)[0]
+        if keep and named.casefold() in {
+                keep.casefold(), personas_mod.display_name(keep).casefold()}:
+            return match.group(0)
+        return ZWSP.join(("@", match.group(1)))
+
+    return pattern.sub(replace, text or "")
 
 
 def classify_attach(path, index, exists, is_dir, size, is_symlink=False):
@@ -134,8 +142,10 @@ def with_footer(body, footer):
     return (body or "").rstrip("\n") + ("\n" + closer if closer else "") + footer
 
 
-def _strip_and_guard(text, as_name):
-    text = strip_persona_mentions(text or "", as_name)
+def _strip_and_guard(text, as_name, relay=False, ask=None):
+    text = text or ""
+    if not relay:
+        text = strip_persona_mentions(text, as_name, keep=ask)
     text = strip_wildcards(text)
     limit = api.window(as_name)
     if len(text) > limit:
@@ -145,7 +155,7 @@ def _strip_and_guard(text, as_name):
     return text
 
 
-def post(as_name, stream, topic, body, files=(), footer="", enforce=True):
+def post(as_name, stream, topic, body, files=(), footer="", enforce=True, relay=False, ask=None):
     cfg = _ready(as_name, enforce)
     body, accepted = _extract(body or "", files)
     links = []
@@ -154,7 +164,7 @@ def post(as_name, stream, topic, body, files=(), footer="", enforce=True):
     if links:
         body = body.rstrip("\n") + "\n\n" + "\n".join(links)
     body = with_footer(body, footer)
-    body = _strip_and_guard(body, as_name)
+    body = _strip_and_guard(body, as_name, relay=relay, ask=ask)
     sid = api.stream_id(as_name, stream)
     if sid is None:
         api.refuse_narrow_miss(as_name, stream)
@@ -456,6 +466,7 @@ def main():
     ap.add_argument("--topic")
     ap.add_argument("--body")
     ap.add_argument("--body-file")
+    ap.add_argument("--ask", metavar="PERSONA")
     ap.add_argument("--react-to", type=int)
     ap.add_argument("--emoji")
     ap.add_argument("--attach", action="append", default=[])
@@ -489,6 +500,11 @@ def main():
         sys.exit(_selftest())
     if not args.as_name:
         ap.error("--as is required")
+    if args.ask and (
+            bool(args.body) == bool(args.body_file) or args.react_to or args.resolve
+            or args.move_to or args.channel_create or args.channel_update
+            or args.channel_archive or args.subscribe or args.unsubscribe):
+        ap.error("--ask is valid only with --body or --body-file")
     if args.resolve or args.move_to:
         if args.resolve and args.move_to:
             ap.error("give exactly one of --resolve or --move-to")
@@ -531,7 +547,22 @@ def main():
     if bool(args.body) == bool(args.body_file):
         ap.error("give exactly one of --body or --body-file")
     body = args.body if args.body else Path(args.body_file).read_text()
-    mid = post(args.as_name, args.channel, args.topic, body, args.attach)
+    if args.ask:
+        if args.ask not in personas_mod.PERSONAS:
+            sys.stderr.write(prompts.ASK_UNKNOWN.format(persona=args.ask) + "\n")
+            raise SystemExit(3)
+        if args.as_name not in personas_mod.PERSONAS:
+            sys.stderr.write(prompts.ASK_NOT_PERSONA.format(asked=args.as_name) + "\n")
+            raise SystemExit(3)
+        allowed = {args.ask.casefold(), personas_mod.display_name(args.ask).casefold()}
+        mentioned = {
+            match.group(1)[2:-2].split("|", 1)[0].casefold()
+            for match in _PERSONA_MENTION.finditer(body)
+        }
+        if mentioned - allowed:
+            sys.stderr.write(prompts.ASK_EXTRA_MENTION.format(persona=args.ask) + "\n")
+            raise SystemExit(3)
+    mid = post(args.as_name, args.channel, args.topic, body, args.attach, ask=args.ask)
     print(mid)
     sid = api.stream_id(args.as_name, args.channel)
     if sid is not None:

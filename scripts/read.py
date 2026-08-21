@@ -3,10 +3,12 @@
 import argparse
 import datetime
 import sys
+import time
 from pathlib import Path
 
 import api
 import constants
+import personas
 import prompts
 
 
@@ -50,6 +52,27 @@ def fetch(as_name, channel=None, topic=None, search=None, limit=constants.READ_L
     if payload.get("result") != "success":
         return None, payload.get("msg", payload)
     return payload.get("messages", []), None
+
+
+def wait(as_name, channel, topic, after_id, sender, seconds, interval,
+         fetcher=fetch, clock=time.monotonic, sleeper=time.sleep):
+    persona_emails = frozenset(api.load(name)["email"] for name in personas.PERSONAS)
+    sender_email = api.load(sender)["email"]
+    deadline = clock() + seconds
+    while True:
+        messages, err = fetcher(
+            as_name, channel, topic, limit=constants.READ_LIMIT, anchor=after_id, newer=True)
+        if err is not None:
+            raise RuntimeError(str(err))
+        matched = [msg for msg in messages if msg.get("sender_email") == sender_email
+                   or (msg.get("sender_email")
+                       and msg.get("sender_email") not in persona_emails)]
+        if matched:
+            return matched
+        remaining = deadline - clock()
+        if remaining <= 0:
+            return []
+        sleeper(min(interval, remaining))
 
 
 def indent(content):
@@ -146,6 +169,11 @@ def main():
     ap.add_argument("--channel")
     ap.add_argument("--topic")
     ap.add_argument("--search")
+    ap.add_argument("--wait", action="store_true")
+    ap.add_argument("--after", type=int)
+    ap.add_argument("--from", dest="sender")
+    ap.add_argument("--for", dest="seconds", type=float, default=constants.WAIT_DEFAULT)
+    ap.add_argument("--interval", type=float, default=constants.WAIT_INTERVAL)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--ids", action="store_true")
     ap.add_argument("--limit", type=int, default=constants.READ_LIMIT)
@@ -173,6 +201,18 @@ def main():
         return
     if not args.as_name:
         ap.error("--as is required")
+    if args.wait:
+        if not args.channel or not args.topic or args.after is None or not args.sender:
+            ap.error("--wait needs --channel, --topic, --after, and --from")
+        if args.sender not in personas.PERSONAS:
+            ap.error("--from must name a persona")
+        messages = wait(args.as_name, args.channel, args.topic, args.after, args.sender,
+                        args.seconds, args.interval)
+        if not messages:
+            sys.stderr.write(prompts.WAIT_NOTHING + "\n")
+            return
+        print(render(messages, api.load(args.as_name)["site"], ids=args.ids))
+        return
     if args.list:
         api.enforce_identity(args.as_name)
         if args.channel:

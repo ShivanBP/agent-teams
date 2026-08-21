@@ -38,6 +38,13 @@ OVER_WINDOW_NOTE = (
 
 IDENTITY_MISMATCH = "Refused: --as {asked} inside identity {actual}. A wake posts only as itself."
 
+ASK_UNKNOWN = "Refused: --ask names unknown persona {persona}. Nothing was posted."
+ASK_NOT_PERSONA = "Refused: --ask is persona-only; --as {asked} may not use it. Nothing was posted."
+ASK_EXTRA_MENTION = (
+    "Refused: --ask {persona} found another persona mention in the body. Nothing was posted."
+)
+WAIT_NOTHING = "nothing yet"
+
 NARROW_MISS = "Refused: channel {channel} did not resolve for identity {identity}. Channels visible here:"
 
 VERB_BRIDGE_ONLY = "Refused: {verb} is bridge-only; --as {asked} may not use it."
@@ -88,6 +95,10 @@ WAKE_HEADER = (
     "mid-wake posts, except that your latest line of plain text shows in the topic as a "
     "progress note while you work, so the deliverable itself goes in the reply, never a pointer "
     "to it.\n"
+    "Tagging a persona in your reply wakes it once and its reply cannot tag on. To ask mid-wake: "
+    "`send.py --ask <persona>`, then `read.py --wait --after <id> --from <persona> --for 300` "
+    "until it answers or your kill time nears; an answer that does not fit your clock is asked "
+    "again next wake.\n"
     "You may post one question and end the wake, only if the answer changes the work; name "
     "a default so the operator can answer in one word. Otherwise state the assumption and "
     "continue.\n"

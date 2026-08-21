@@ -20,6 +20,7 @@ def _body():
     import subprocess
     import sys
     import tempfile
+    import time as time_mod
 
     import constants
     import tests.cases as cases
@@ -475,18 +476,22 @@ def _body():
         finally:
             subprocess.Popen = real_popen
         group_gone = False
-        if pgids:
+        deadline = time_mod.monotonic() + 2
+        while pgids:
             try:
                 os.killpg(pgids[0], 0)
             except ProcessLookupError:
                 group_gone = True
+                break
+            if time_mod.monotonic() >= deadline:
+                break
+            time_mod.sleep(0.05)
         if timed_out and group_gone:
             passed += 1
         else:
             failed += 1
             print("FAIL timeout process group survived -> pgids=%r timeout=%r gone=%r" %
                   (pgids, timed_out, group_gone))
-        import time as time_mod
         code, expected_stdout, expected_stderr, max_seconds = cases.JSONL_BACKGROUND
         started = time_mod.monotonic()
         proc, got = _run_jsonl(

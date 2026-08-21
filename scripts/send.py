@@ -231,6 +231,30 @@ def verb_allowed(as_name):
     return as_name == constants.BRIDGE_IDENTITY
 
 
+def status_channel(channel):
+    """The channels whose topics are never resolved or moved: the fleet's own status channel and
+    any domain's. Derived from the DOMAIN_STATUS_CHANNEL template, never from a literal suffix,
+    so renaming the template moves this guard with it."""
+    name = str(channel or "").strip()
+    if name == constants.STATUS_STREAM:
+        return True
+    head, mark, tail = constants.DOMAIN_STATUS_CHANNEL.partition("{channel}")
+    if not mark:
+        return name == constants.DOMAIN_STATUS_CHANNEL
+    return (name.startswith(head) and name.endswith(tail)
+            and len(name) > len(head) + len(tail))
+
+
+def _refuse_status_topic(verb, channel, topic):
+    """A status topic is an open lane by design (AGENTS.md); this was prose in --resolve's help
+    text until now, so every seat could still spend the call."""
+    if not status_channel(channel):
+        return
+    sys.stderr.write(
+        prompts.STATUS_TOPIC_LOCKED.format(verb=verb, channel=channel, topic=topic) + "\n")
+    raise SystemExit(2)
+
+
 def _topic_anchor_message(as_name, channel, topic):
     """Any message id in this channel+topic anchors the update-message call; propagate_mode
     change_all applies the edit to the whole topic regardless of which message anchors it."""
@@ -264,6 +288,7 @@ def resolve_topic(as_name, channel, topic):
     if not verb_allowed(as_name):
         sys.stderr.write(prompts.VERB_BRIDGE_ONLY.format(verb="--resolve", asked=as_name) + "\n")
         raise SystemExit(2)
+    _refuse_status_topic("--resolve", channel, topic)
     cfg = _ready(as_name)
     message_id = _topic_anchor_or_refuse(as_name, channel, topic)
     new_topic = topic if topic.strip().startswith(constants.RESOLVED_PREFIX) else (constants.RESOLVED_PREFIX + " " + topic)
@@ -280,6 +305,7 @@ def move_topic(as_name, channel, topic, target_channel):
     if not verb_allowed(as_name):
         sys.stderr.write(prompts.VERB_BRIDGE_ONLY.format(verb="--move-to", asked=as_name) + "\n")
         raise SystemExit(2)
+    _refuse_status_topic("--move-to", channel, topic)
     cfg = _ready(as_name)
     target_sid = api.stream_id(as_name, target_channel)
     if target_sid is None:
@@ -325,10 +351,10 @@ def main():
     ap.add_argument("--resolve", action="store_true",
                      help="Bridge-only. Marks --channel/--topic resolved (native ✔ rename, "
                           "notification-bot marker included). Moving a live topic resets its "
-                          "lane; #status topics are never resolved or moved.")
+                          "lane; a status channel's topics are refused.")
     ap.add_argument("--move-to", dest="move_to", metavar="CHANNEL",
                      help="Bridge-only. Moves --channel/--topic to CHANNEL. Moving a live topic "
-                          "resets its lane; #status topics are never resolved or moved.")
+                          "resets its lane; a status channel's topics are refused.")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(_selftest())

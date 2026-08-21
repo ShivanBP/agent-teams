@@ -161,13 +161,53 @@ def _hash_component(text):
     return urllib.parse.quote(text, safe="").replace(".", "%2E").replace("%", ".")
 
 
-def permalink(site, stream_id, stream_name, topic, message_id):
+def permalink(site, stream_id, stream_name, topic, message_id, operator="near"):
     """A message's #narrow URL. Stream slug is id-name with spaces turned to hyphens before
     encoding; topic is hash-encoded whole. One pure function, callers have every ingredient
-    already (stream_id() resolves the numeric id)."""
+    already (stream_id() resolves the numeric id).
+
+    operator="with" is the same link addressed to the topic instead of the message: Zulip
+    follows it through a rename or a move, where near pins the message it names."""
     stream_frag = "%s-%s" % (stream_id, _hash_component(stream_name.replace(" ", "-")))
     topic_frag = _hash_component(topic)
-    return "%s/#narrow/channel/%s/topic/%s/near/%s" % (site, stream_frag, topic_frag, message_id)
+    return "%s/#narrow/channel/%s/topic/%s/%s/%s" % (
+        site, stream_frag, topic_frag, operator, message_id)
+
+
+UPLOAD_MARK = "/user_uploads/"
+
+
+def upload_path(url):
+    """The path_id inside any shape of an upload link: a full URL, a site-relative path, or the
+    path_id alone. None means the caller handed us something that is not an upload."""
+    text = str(url or "").strip()
+    if UPLOAD_MARK not in text:
+        return None
+    tail = text.split(UPLOAD_MARK, 1)[1].split("?")[0].split("#")[0]
+    return tail or None
+
+
+def attachment(name, url, open_fn=urllib.request.urlopen):
+    """Fetch one upload. Zulip answers /user_uploads/<path_id> with a short-lived signed URL,
+    which is then fetched with no credentials at all. Returns ((content_type, bytes, link), None)
+    or (None, reason), matching read.fetch's shape."""
+    path_id = upload_path(url)
+    if path_id is None:
+        return None, "not_an_upload"
+    cfg = load(name)
+    payload = request(cfg, "GET", "/api/v1" + UPLOAD_MARK + path_id)
+    if payload.get("result") != "success":
+        return None, payload.get("msg", payload)
+    link = payload.get("url") or ""
+    if link.startswith("/"):
+        link = cfg["site"] + link
+    try:
+        with open_fn(urllib.request.Request(link), timeout=60) as resp:
+            data = resp.read()
+            ctype = resp.headers.get("Content-Type", "application/octet-stream")
+    except urllib.error.URLError as exc:
+        return None, "fetching the temporary link failed: %s" % exc.reason
+    return (ctype, data, link), None
 
 
 def visible_streams(name):

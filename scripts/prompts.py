@@ -53,6 +53,19 @@ DOMAIN_BOARD_TOO_LONG = (
 
 TOPIC_ANCHOR_MISS = "Refused: no message found in {channel} > {topic} to anchor the edit."
 
+TOPIC_PERMALINK = "Topic permalink: {url}"
+
+ATTACHMENT_HEAD = "Attachment: {ctype}, {size} bytes. Temporary link, good for about a minute: {url}"
+ATTACHMENT_SAVED = "Saved to {path}"
+ATTACHMENT_MISS = (
+    "Refused: {url} is not a Zulip upload link. An upload link carries /user_uploads/ in it."
+)
+
+STATUS_TOPIC_LOCKED = (
+    "Refused: {verb} on {channel} > {topic}. A status topic is never resolved or moved; it is "
+    "the one lane that stays open."
+)
+
 # --- wake scaffolding (Phase 2): everything around the waking body, never inside a persona file ---
 
 WAKE_HEADER = (

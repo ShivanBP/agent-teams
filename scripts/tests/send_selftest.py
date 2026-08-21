@@ -86,6 +86,29 @@ def _body():
         else:
             failed += 1
             print("FAIL verb_allowed(%r) -> %r, wanted %r" % (as_name, got, expected))
+    for channel, expected in cases.STATUS_CHANNELS:
+        got = status_channel(channel)
+        if got == expected:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL status_channel(%r) -> %r, wanted %r" % (channel, got, expected))
+    # The guard has to refuse before any API call, so the row drives the verb, not the predicate.
+    for verb, channel, should_refuse in cases.STATUS_TOPIC_GUARD:
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                _refuse_status_topic(verb, channel, "a topic")
+            code = None
+        except SystemExit as exc:
+            code = exc.code
+        refused = code == 2
+        if refused == should_refuse and (not refused or channel in stderr.getvalue()):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL _refuse_status_topic(%r, %r) code=%r note=%r"
+                  % (verb, channel, code, stderr.getvalue()))
     import constants
     saved_identity = constants.BRIDGE_IDENTITY
     try:

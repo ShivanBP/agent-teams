@@ -234,6 +234,76 @@ PERMALINKS = [
      "topic/api.2Epy.20cleanup/near/7"),
 ]
 
+# (site, stream_id, stream_name, topic, message_id, expected url) for api.permalink with the
+# topic operator: same encoding, addressed to the topic instead of one message.
+TOPIC_PERMALINKS = [
+    ("https://example.zulipchat.com", 100, "setup", "browser seat", 200,
+     "https://example.zulipchat.com/#narrow/channel/100-setup/topic/browser.20seat/with/200"),
+    ("https://example.zulipchat.com", 3, "two words", "api.py cleanup", 7,
+     "https://example.zulipchat.com/#narrow/channel/3-two-words/topic/api.2Epy.20cleanup/with/7"),
+]
+
+# (url as handed to --attachment, expected path_id) for api.upload_path
+UPLOAD_PATHS = [
+    ("https://example.zulipchat.com/user_uploads/9/ab-CD/notes.md", "9/ab-CD/notes.md"),
+    ("/user_uploads/9/ab-CD/notes.md", "9/ab-CD/notes.md"),
+    ("https://example.zulipchat.com/user_uploads/9/ab-CD/notes.md?x=1", "9/ab-CD/notes.md"),
+    ("https://example.zulipchat.com/user_uploads/9/ab-CD/notes.md#top", "9/ab-CD/notes.md"),
+    ("  /user_uploads/9/ab-CD/a%20b.png  ", "9/ab-CD/a%20b.png"),
+    ("https://example.zulipchat.com/#narrow/channel/9-setup/topic/t/near/1", None),
+    ("", None),
+    (None, None),
+    ("/user_uploads/", None),
+]
+
+# (messages, expected line or None) for read.topic_line: the newest message anchors the link.
+TOPIC_LINE_MESSAGES = [
+    ([], None),
+    ([{"id": 1, "stream_id": 9, "display_recipient": "setup", "subject": "browser seat"},
+      {"id": 4, "stream_id": 9, "display_recipient": "setup", "subject": "browser seat"}],
+     "Topic permalink: https://example.zulipchat.com/#narrow/channel/9-setup/"
+     "topic/browser.20seat/with/4"),
+]
+
+# (content_type, bytes, expected lines) for read.render_attachment, --out left unset.
+ATTACHMENT_RENDERS = [
+    ("text/markdown", b"# title\nbody",
+     ["Attachment: text/markdown, 12 bytes. Temporary link, good for about a minute: LINK",
+      "", "# title\nbody"]),
+    ("text/plain; charset=utf-8", b"plain",
+     ["Attachment: text/plain; charset=utf-8, 5 bytes. Temporary link, good for about a "
+      "minute: LINK", "", "plain"]),
+    ("image/png", b"\x89PNG\r\n\x1a\n",
+     ["Attachment: image/png, 8 bytes. Temporary link, good for about a minute: LINK"]),
+    ("application/pdf", b"%PDF-1.4",
+     ["Attachment: application/pdf, 8 bytes. Temporary link, good for about a minute: LINK"]),
+]
+
+# (channel, expected) for send.status_channel. The domain rows are derived from the live
+# DOMAIN_STATUS_CHANNEL template, never a hardcoded suffix.
+STATUS_CHANNELS = [
+    (constants.STATUS_STREAM, True),
+    (constants.DOMAIN_STATUS_CHANNEL.format(channel="foundry"), True),
+    (constants.DOMAIN_STATUS_CHANNEL.format(channel="job-search"), True),
+    ("  " + constants.STATUS_STREAM + "  ", True),
+    ("setup", False),
+    ("maintenance", False),
+    ("", False),
+    (None, False),
+    # the template with nothing filled in is not a channel any domain owns
+    (constants.DOMAIN_STATUS_CHANNEL.replace("{channel}", ""), False),
+]
+
+# (verb, channel, should refuse) for send._refuse_status_topic
+STATUS_TOPIC_GUARD = [
+    ("--resolve", constants.STATUS_STREAM, True),
+    ("--move-to", constants.STATUS_STREAM, True),
+    ("--resolve", constants.DOMAIN_STATUS_CHANNEL.format(channel="money"), True),
+    ("--move-to", constants.DOMAIN_STATUS_CHANNEL.format(channel="money"), True),
+    ("--resolve", "setup", False),
+    ("--move-to", "setup", False),
+]
+
 # (stream_id, topic, persona, expected) for store.lane_key
 LANE_KEYS = [
     (42, "phase 1", "peter", "42:phase 1:peter"),

@@ -61,6 +61,15 @@ ATTACHMENT_MISS = (
     "Refused: {url} is not a Zulip upload link. An upload link carries /user_uploads/ in it."
 )
 
+STATUS_CHANNEL_LOCKED = (
+    "Refused: {verb} on {channel}. A status channel is the lane the fleet reads without being "
+    "told to; archiving or renaming it takes that lane away."
+)
+
+PRINCIPAL_UNKNOWN = "Refused: this realm has no user {who}. Nothing was created or changed."
+
+CHANNEL_UPDATE_EMPTY = "Refused: --channel-update needs --description or --rename."
+
 STATUS_TOPIC_LOCKED = (
     "Refused: {verb} on {channel} > {topic}. A status topic is never resolved or moved; it is "
     "the one lane that stays open."

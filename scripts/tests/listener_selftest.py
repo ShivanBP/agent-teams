@@ -12,6 +12,7 @@ def run(module):
 
 
 def _body():
+    import contextlib
     import logging
     import os
     import tempfile
@@ -142,6 +143,21 @@ def _body():
             failed += 1
             print("FAIL _location_from_refetch(%r, %r, %r) -> %r wanted %r" %
                   (payload, fallback_channel, fallback_topic, got, expected))
+
+    forwarded = []
+    saved_location = send_mod.post, api.load, api.request
+    try:
+        send_mod.post = lambda *a, **k: forwarded.append((a, k))
+        api.load = lambda identity: identity
+        api.request = lambda *a, **k: {"result": "error"}
+        _post_at_current_location("bob", 9, "c", "t", "reply", relay=True)
+    finally:
+        send_mod.post, api.load, api.request = saved_location
+    if forwarded and forwarded[0][1].get("relay") is True:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL current-location post dropped relay -> %r" % forwarded)
 
     for exc, expected in cases.FAILURE_REASONS:
         got = _failure_reason(exc)
@@ -431,6 +447,66 @@ def _body():
             failed += 1
             print("FAIL %s selected flags %r logs=%r wanted %r log=%r" %
                   (label, selected_flags, capture.messages, expected_flags, log_substring))
+
+    # The caller computes one-hop relay from the sender and wake-time loop, then passes it to
+    # the final post. Three rows pin the whole truth table.
+    relay_posts = []
+    loop_open = False
+    saved_relay = (
+        runner.run, runner.wake_cwd, send_mod.react, build_delta_record, provider_for_wake,
+        resolve_wake_settings, loops.loop_for_lane, store.inflight_add, store.inflight_clear,
+        store.lane_lock, store.session_get, store.session_set, store.mutate, _append_cost,
+        _post_at_current_location, refresh_topic_digest, handle_rail_a, progress_sweep,
+        monitor.update_board, log.disabled,
+    )
+    try:
+        log.disabled = True
+        runner.run = lambda *a, **k: runner.Result("reply", "sid", 0.0, 1, {}, "claude")
+        runner.wake_cwd = lambda *a, **k: (None, "")
+        send_mod.react = lambda *a, **k: None
+        globals()["build_delta_record"] = lambda *a, **k: ("", None)
+        globals()["provider_for_wake"] = lambda *a, **k: "claude"
+        globals()["resolve_wake_settings"] = lambda *a, **k: ("fable", "high", "high")
+        loops.loop_for_lane = lambda *a, **k: {"id": 1} if loop_open else None
+        store.inflight_add = lambda *a, **k: None
+        store.inflight_clear = lambda *a, **k: None
+        store.lane_lock = lambda *a, **k: contextlib.nullcontext()
+        store.session_get = lambda *a, **k: None
+        store.session_set = lambda *a, **k: None
+        store.mutate = lambda *a, **k: None
+        globals()["_append_cost"] = lambda *a, **k: None
+        globals()["_post_at_current_location"] = lambda *a, **k: relay_posts.append(k["relay"]) or ("c", "t")
+        globals()["refresh_topic_digest"] = lambda *a, **k: None
+        globals()["handle_rail_a"] = lambda *a, **k: None
+        globals()["progress_sweep"] = lambda *a, **k: None
+        monitor.update_board = lambda *a, **k: None
+        for index, (sender_email, open_loop) in enumerate([
+                ("persona@example.com", False), ("mate@example.com", True),
+                ("mate@example.com", False)]):
+            loop_open = open_loop
+            handle_wake(
+                "bob", {"message": {"stream_id": "selftest-relay-%d" % index,
+                                      "subject": "t", "display_recipient": "c",
+                                      "content": "go", "sender_id": 7, "id": 70 + index,
+                                      "sender_email": sender_email}},
+                frozenset(), frozenset({"persona@example.com"}))
+    finally:
+        runner.run, runner.wake_cwd = saved_relay[:2]
+        send_mod.react = saved_relay[2]
+        globals()["build_delta_record"], globals()["provider_for_wake"] = saved_relay[3:5]
+        globals()["resolve_wake_settings"] = saved_relay[5]
+        loops.loop_for_lane = saved_relay[6]
+        store.inflight_add, store.inflight_clear = saved_relay[7:9]
+        store.lane_lock, store.session_get, store.session_set, store.mutate = saved_relay[9:13]
+        globals()["_append_cost"], globals()["_post_at_current_location"] = saved_relay[13:15]
+        globals()["refresh_topic_digest"], globals()["handle_rail_a"] = saved_relay[15:17]
+        globals()["progress_sweep"] = saved_relay[17]
+        monitor.update_board, log.disabled = saved_relay[18:20]
+    if relay_posts == [False, False, True]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL wake relay truth table -> %r wanted [False, False, True]" % relay_posts)
 
     # The domain header line, driven at the call site: a helper that resolves the root correctly
     # is worth nothing if handle_wake never asks it about this wake's channel.
@@ -777,10 +853,10 @@ def _body():
             return replay_payload
         return {"result": "success",
                 "messages": [{"id": (params or {}).get("anchor"), "stream_id": 1, "subject": "t",
-                              "display_recipient": "c", "sender_email": "mate@example.com",
+                              "display_recipient": "c", "sender_email": "persona@example.com",
                               "content": "go", "flags": []}]}
 
-    def _record_wake(identity, event, flag_holder_ids):
+    def _record_wake(identity, event, flag_holder_ids, persona_emails=frozenset()):
         replay_calls.append(("wake", identity, (event["message"]).get("id")))
         replay_records.append(sorted(store.inflight_all()))
 
@@ -815,7 +891,8 @@ def _body():
             bridge_row_lane: {"persona": constants.BRIDGE_IDENTITY, "message_id": 200,
                               "stream_id": 2, "topic": "t"},
         })
-        replay_inflight("%s" % replay_persona, 7, frozenset(), frozenset())
+        replay_inflight("%s" % replay_persona, 7, frozenset(),
+                        frozenset({"persona@example.com"}))
         popped_first = replay_records == [[bridge_row_lane]]
         left_behind = sorted(replay_inflight_rows)
 
@@ -875,11 +952,20 @@ def _body():
 
         def call_on_each_event(self, cb, **kwargs):
             startup.append(("listening",))
+            cb({"type": "message", "flags": ["mentioned"], "message": {
+                "id": 10, "sender_id": 2, "sender_email": "persona@example.com"}})
+
+    class _FakeThread:
+        def __init__(self, target, args, **kwargs):
+            startup.append(("thread", target.__name__, args[0]))
+
+        def start(self):
+            startup.append(("started",))
 
     fake_zulip = types.ModuleType("zulip")
     fake_zulip.Client = _FakeClient
     old_startup = (api.me, mate_user_id, flag_holder_user_ids, replay_inflight, backfill,
-                   log.disabled)
+                   store.seen_set, threading.Thread, log.disabled)
     try:
         log.disabled = True
         sys.modules["zulip"] = fake_zulip
@@ -888,14 +974,18 @@ def _body():
         globals()["flag_holder_user_ids"] = lambda: frozenset()
         globals()["replay_inflight"] = lambda *a: startup.append(("replay",) + a[:1])
         globals()["backfill"] = lambda *a: startup.append(("backfill",) + a[:1])
-        run_identity(replay_persona, frozenset())
+        store.seen_set = lambda identity, message_id: startup.append(("seen", identity, message_id))
+        threading.Thread = _FakeThread
+        run_identity(replay_persona, frozenset({"persona@example.com"}))
     finally:
         sys.modules.pop("zulip", None)
         api.me = old_startup[0]
         globals()["mate_user_id"], globals()["flag_holder_user_ids"] = old_startup[1:3]
         globals()["replay_inflight"], globals()["backfill"] = old_startup[3:5]
-        log.disabled = old_startup[5]
-    if startup == [("replay", replay_persona), ("backfill", replay_persona), ("listening",)]:
+        store.seen_set, threading.Thread, log.disabled = old_startup[5:8]
+    if startup == [
+            ("replay", replay_persona), ("backfill", replay_persona), ("listening",),
+            ("seen", replay_persona, 10), ("thread", "wake_worker", 10), ("started",)]:
         passed += 1
     else:
         failed += 1

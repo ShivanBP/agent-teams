@@ -12,6 +12,10 @@ def run(module):
 
 
 def _body():
+    import contextlib
+    import io
+    import api
+    import personas
     import tests.cases as cases
 
     passed = failed = 0
@@ -43,6 +47,96 @@ def _body():
         else:
             failed += 1
             print("FAIL _narrow%r -> %r wanted %r" % (args, got, expected))
+
+    roster = list(personas.PERSONAS)
+    asker, sender, other = roster[:3]
+    emails = {name: name + "@example.com" for name in roster}
+    saved_load = api.load
+    sleeps = []
+    batches = [
+        ([{"id": 2, "sender_email": emails[asker]},
+          {"id": 3, "sender_email": emails[other]}], None),
+        ([{"id": 4, "sender_email": emails[sender]}], None),
+    ]
+    ticks = iter([0, 0])
+    try:
+        api.load = lambda name: {"email": emails[name]}
+        got = wait(
+            asker, "c", "t", 1, sender, 5, 1,
+            fetcher=lambda *a, **k: batches.pop(0),
+            clock=lambda: next(ticks), sleeper=sleeps.append)
+    finally:
+        api.load = saved_load
+    if [row["id"] for row in got] == [4] and sleeps == [1]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL wait ignored own/other persona -> %r sleeps=%r" % (got, sleeps))
+
+    ticks = iter([0, 5])
+    try:
+        api.load = lambda name: {"email": emails[name]}
+        got = wait(
+            asker, "c", "t", 1, sender, 5, 1,
+            fetcher=lambda *a, **k: ([], None),
+            clock=lambda: next(ticks), sleeper=lambda seconds: None)
+    finally:
+        api.load = saved_load
+    if got == []:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL wait deadline -> %r wanted []" % got)
+
+    try:
+        api.load = lambda name: {"email": emails[name]}
+        got = wait(
+            asker, "c", "t", 1, sender, 5, 1,
+            fetcher=lambda *a, **k: ([{"id": 5, "sender_email": "mate@example.com"}], None),
+            clock=lambda: 0, sleeper=lambda seconds: None)
+    finally:
+        api.load = saved_load
+    if [row["id"] for row in got] == [5]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL wait operator answer -> %r" % got)
+
+    # Drive the CLI branch so the helper cannot land unwired and timeout stays a clean exit 0.
+    saved_argv, saved_wait, saved_load = list(sys.argv), wait, api.load
+    cli_calls = []
+    answer = [{
+        "id": 6, "timestamp": 1000, "sender_full_name": "Peter", "content": "answer",
+        "stream_id": 7, "display_recipient": "c", "subject": "t",
+    }]
+    cli_rows = [(answer, "Peter: answer", ""),
+                ([], "", prompts.WAIT_NOTHING)]
+    for result, stdout_part, stderr_part in cli_rows:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        globals()["wait"] = lambda *a, result=result, **k: cli_calls.append(a) or result
+        api.load = lambda name: {"site": "https://example.zulipchat.com"}
+        try:
+            sys.argv = ["read.py", "--as", asker, "--channel", "c", "--topic", "t",
+                        "--wait", "--after", "1", "--from", sender, "--for", "2"]
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                main()
+        finally:
+            sys.argv = list(saved_argv)
+            globals()["wait"] = saved_wait
+            api.load = saved_load
+        if stdout_part in stdout.getvalue() and stderr_part in stderr.getvalue():
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL wait CLI -> stdout=%r stderr=%r" %
+                  (stdout.getvalue(), stderr.getvalue()))
+    if cli_calls == [
+            (asker, "c", "t", 1, sender, 2.0, constants.WAIT_INTERVAL),
+            (asker, "c", "t", 1, sender, 2.0, constants.WAIT_INTERVAL)]:
+        passed += 1
+    else:
+        failed += 1
+        print("FAIL wait CLI args -> %r" % cli_calls)
     got = render_channels(cases.CHANNEL_LIST[0])
     if got == cases.CHANNEL_LIST[1]:
         passed += 1

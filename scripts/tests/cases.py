@@ -41,6 +41,13 @@ PERSONA_MENTIONS = [
     ("bob", "@**all** hands", "@**all** hands"),
 ]
 
+# (sender, input, kept persona, expected) for the deliberate one-mention exception.
+PERSONA_MENTION_KEEPS = [
+    ("bob", "ask @**bob** and @**Ma'at**", "bob",
+     "ask @**bob** and @" + Z + "**Ma'at**"),
+    ("bob", "ask @**Bob|123**", "bob", "ask @**Bob|123**"),
+]
+
 # (params, expected form encoding) for api._encode
 ENCODE = [
     ({"topic": "phase 1"}, "topic=phase+1"),
@@ -1617,6 +1624,9 @@ WAKE_HEADER_CONTAINS = [
     "[attach: /abs/path] alone on a line",
     "the deliverable itself goes in the reply, never a pointer",
     "full history is searchable any time with scripts/read.py --search",
+    "Tagging a persona in your reply wakes it once",
+    "send.py --ask <persona>",
+    "read.py --wait --after <id> --from <persona> --for 300",
 ]
 
 # (prompts attribute name, required substring): guards strings whose content no other table

@@ -194,7 +194,7 @@ def _append_cost(persona, lane, result, model=None, level=None):
     store.cost_append(row)
 
 
-def _post_at_current_location(identity, message_id, channel, topic, body, footer=""):
+def _post_at_current_location(identity, message_id, channel, topic, body, footer="", relay=False):
     """Refetches the message's current channel/topic before posting, so a resolve or rename
     between wake and reply lands the reply inside the moved topic instead of forking an
     unresolved twin. handle_wake and handle_operator_tag shared this shape before extraction.
@@ -205,7 +205,7 @@ def _post_at_current_location(identity, message_id, channel, topic, body, footer
         post_channel, post_topic = _location_from_refetch(cur, channel, topic)
     except (Exception, SystemExit):
         log.exception("current-location refetch failed for message %s; using wake-time lane", message_id)
-    send_mod.post(identity, post_channel, post_topic, body, footer=footer)
+    send_mod.post(identity, post_channel, post_topic, body, footer=footer, relay=relay)
     return post_channel, post_topic
 
 
@@ -363,7 +363,7 @@ def handle_topic_resolved(event):
 
 # --- the wake path ---------------------------------------------------------------------------
 
-def handle_wake(identity, event, flag_holder_ids):
+def handle_wake(identity, event, flag_holder_ids, persona_emails=frozenset()):
     msg = event.get("message") or {}
     stream_id = msg.get("stream_id")
     channel = msg.get("display_recipient")
@@ -371,6 +371,10 @@ def handle_wake(identity, event, flag_holder_ids):
     sender_id = msg.get("sender_id")
     content = msg.get("content", "")
     message_id = msg.get("id")
+    relay = not (
+        is_persona_sender(msg.get("sender_email"), persona_emails)
+        or loops.loop_for_lane(constants.BRIDGE_IDENTITY, stream_id, topic)
+    )
 
     lane = store.lane_key(stream_id, topic, identity)
 
@@ -442,7 +446,7 @@ def handle_wake(identity, event, flag_holder_ids):
                     identity, message_id, channel, topic,
                     prompts.with_notice(result.reply, worktree_notice),
                     prompts.wake_footer(result.provider, run_model, run_level, result.session_id,
-                                        result.degraded))
+                                        result.degraded), relay=relay)
             except (Exception, SystemExit) as exc:
                 log.exception("wake failed for lane %s", lane)
                 # a failed wake leaves no resumable session: dropped before the note, so a post
@@ -823,15 +827,12 @@ def operator_tag_worker(event, mate_id):
 def _dispatch(identity, msg, mate_id, flag_holder_ids, persona_emails):
     """One mention, re-run off an API payload rather than an event. Shared by backfill and
     replay_inflight so the two catch-up paths cannot drift apart."""
-    if identity in personas.PERSONAS and is_persona_sender(msg.get("sender_email"), persona_emails):
-        log.info("skip wake: persona sender mentioned %s on message %s", identity, msg.get("id"))
-        return
     fake_event = {"type": "message", "message": dict(msg, flags=list(set(msg.get("flags", [])) | {"mentioned"}))}
     try:
         if identity == constants.BRIDGE_IDENTITY:
             handle_operator_tag(fake_event, mate_id)
         else:
-            handle_wake(identity, fake_event, flag_holder_ids)
+            handle_wake(identity, fake_event, flag_holder_ids, persona_emails)
     except (Exception, SystemExit):
         log.exception("catch-up wake failed for %s message %s", identity, msg.get("id"))
 
@@ -911,7 +912,7 @@ def run_identity(identity, persona_emails):
         # Never let SystemExit (send.py, api.py) escape a thread's callback and kill it silently;
         # KeyboardInterrupt is not Exception or SystemExit, so it still propagates (finding 3b).
         try:
-            handle_wake(identity, event, flag_holder_ids_for_wake)
+            handle_wake(identity, event, flag_holder_ids_for_wake, persona_emails)
         except (Exception, SystemExit):
             log.exception("unhandled error waking %s on message %s", identity, msg_id)
 
@@ -949,9 +950,6 @@ def run_identity(identity, persona_emails):
             store.seen_set(identity, msg_id)
         except (Exception, SystemExit):
             log.exception("failed to record seen id for identity %s", identity)
-        if is_persona_sender(msg.get("sender_email"), persona_emails):
-            log.info("skip wake: persona sender mentioned %s on message %s", identity, msg_id)
-            return
         # Each wake runs in its own thread; the lane lock (plus finding 2's ordering) already
         # serializes same-lane wakes, so cross-lane wakes of one persona overlap instead of
         # queuing behind each other (finding 4).

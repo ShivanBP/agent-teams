@@ -24,6 +24,24 @@ def _body():
     import constants
     import tests.cases as cases
 
+    def popen_from(fake_run):
+        class _FakePopen:
+            def __init__(self, cmd, **kwargs):
+                self.cmd = cmd
+                self.kwargs = kwargs
+                self.pid = 1
+                self.returncode = None
+
+            def communicate(self, input=None, timeout=None):
+                result = fake_run(self.cmd, input=input, timeout=timeout, **self.kwargs)
+                self.returncode = result.returncode
+                return result.stdout, result.stderr
+
+            def wait(self):
+                return self.returncode
+
+        return _FakePopen
+
     passed = failed = 0
     original_persona_dir = PERSONA_DIR
     persona_fixture = tempfile.TemporaryDirectory()
@@ -230,25 +248,26 @@ def _body():
                     '{"type":"step_start","sessionID":"session"}\n'
                     '{"type":"text","part":{"text":"ok"}}'), stderr="")
 
-        original_run = subprocess.run
+        original_popen = subprocess.Popen
         try:
             if inherited is None:
                 os.environ.pop("OPENCODE_DISABLE_CLAUDE_CODE", None)
             else:
                 os.environ["OPENCODE_DISABLE_CLAUDE_CODE"] = inherited
-            subprocess.run = fake_run
+            subprocess.Popen = popen_from(fake_run)
             _run_opencode(
                 "bob", "hi", model="model", effort="high", session="session",
                 cwd=REPO_DIR, timeout=1, identity=None)
         finally:
-            subprocess.run = original_run
+            subprocess.Popen = original_popen
             if before is None:
                 os.environ.pop("OPENCODE_DISABLE_CLAUDE_CODE", None)
             else:
                 os.environ["OPENCODE_DISABLE_CLAUDE_CODE"] = before
         got = captured.get("OPENCODE_DISABLE_CLAUDE_CODE")
-        # stdin stays unset when the brief feeds it: subprocess opens the pipe and closes it.
-        got_stdin = ("brief" if captured.get("input") == "hi" and captured.get("stdin") is None
+        # Popen opens the pipe; communicate writes the brief and closes it.
+        got_stdin = ("brief" if captured.get("input") == "hi"
+                     and captured.get("stdin") == subprocess.PIPE
                      else "other")
         if got == expected and got_stdin == expected_stdin:
             passed += 1
@@ -269,18 +288,18 @@ def _body():
                     '"result":"ok","session_id":"session","total_cost_usd":0,'
                     '"num_turns":1}\n'), stderr="")
 
-        original_run = subprocess.run
+        original_popen = subprocess.Popen
         try:
             if inherited is None:
                 os.environ.pop("CLAUDE_CODE_DISABLE_AUTO_MEMORY", None)
             else:
                 os.environ["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = inherited
-            subprocess.run = fake_run
+            subprocess.Popen = popen_from(fake_run)
             _run_claude(
                 "bob", "hi", model="model", effort="high", session="session",
                 cwd=REPO_DIR, timeout=1, identity=None)
         finally:
-            subprocess.run = original_run
+            subprocess.Popen = original_popen
             if before is None:
                 os.environ.pop("CLAUDE_CODE_DISABLE_AUTO_MEMORY", None)
             else:
@@ -435,6 +454,38 @@ def _body():
         else:
             failed += 1
             print("FAIL killed wake log retained %r wanted 'partial\\n'" % got)
+        pgids = []
+        real_popen = subprocess.Popen
+
+        def capture_pgid(*args, **kwargs):
+            proc = real_popen(*args, **kwargs)
+            pgids.append(proc.pid)
+            return proc
+
+        subprocess.Popen = capture_pgid
+        try:
+            try:
+                _run_jsonl(
+                    ["sh", "-c", "sleep 30 & sleep 30"], cwd=REPO_DIR,
+                    env=dict(os.environ), timeout=1, wake_log=None)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+            else:
+                timed_out = False
+        finally:
+            subprocess.Popen = real_popen
+        group_gone = False
+        if pgids:
+            try:
+                os.killpg(pgids[0], 0)
+            except ProcessLookupError:
+                group_gone = True
+        if timed_out and group_gone:
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL timeout process group survived -> pgids=%r timeout=%r gone=%r" %
+                  (pgids, timed_out, group_gone))
         import time as time_mod
         code, expected_stdout, expected_stderr, max_seconds = cases.JSONL_BACKGROUND
         started = time_mod.monotonic()
@@ -539,15 +590,15 @@ def _body():
             captured.extend(args[0])
             return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="stop")
 
-        original_run = subprocess.run
-        subprocess.run = fake_run
+        original_popen = subprocess.Popen
+        subprocess.Popen = popen_from(fake_run)
         try:
             run("bob", "hi", provider=provider, model=model, effort=effort,
                 cwd=REPO_DIR, timeout=1)
         except RuntimeError:
             pass
         finally:
-            subprocess.run = original_run
+            subprocess.Popen = original_popen
         built = " ".join(str(part) for part in captured)
         for fragment in fragments:
             if fragment in built:
@@ -566,15 +617,15 @@ def _body():
                 spawned["stdin"] = kwargs.get("input")
                 return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="stop")
 
-            original_run = subprocess.run
-            subprocess.run = fake_run
+            original_popen = subprocess.Popen
+            subprocess.Popen = popen_from(fake_run)
             try:
                 run("bob", cases.STDIN_BRIEF_SENTINEL, provider=provider, session=session,
                     cwd=REPO_DIR, timeout=1)
             except RuntimeError:
                 pass
             finally:
-                subprocess.run = original_run
+                subprocess.Popen = original_popen
             argv = " ".join(str(part) for part in spawned.get("argv") or [])
             stdin_text = spawned.get("stdin") or ""
             if cases.STDIN_BRIEF_SENTINEL not in argv and cases.STDIN_BRIEF_SENTINEL in stdin_text:
@@ -634,20 +685,22 @@ def _body():
             failed += 1
             print("FAIL check_binary(%r, %r) -> %r wanted %r" % (provider, binary, note, needles))
 
-    # run() drives the check before any spawn: subprocess.run stubbed, so a missed check would
+    # run() drives the check before any spawn: subprocess.Popen stubbed, so a missed check would
     # show up as a recorded call instead of a refusal.
     spawns = []
-    saved_bin, saved_spawn = constants.CLAUDE_BIN, subprocess.run
+    saved_bin, saved_spawn = constants.CLAUDE_BIN, subprocess.Popen
     try:
         constants.CLAUDE_BIN = "/nonexistent/claude"
-        subprocess.run = lambda *a, **k: spawns.append(a) or None
+        subprocess.Popen = popen_from(
+            lambda *a, **k: spawns.append(a) or
+            subprocess.CompletedProcess(a[0], 1, stdout="", stderr="stop"))
         try:
             run("peter", "hi", provider="claude")
             note = None
         except RuntimeError as exc:
             note = str(exc)
     finally:
-        constants.CLAUDE_BIN, subprocess.run = saved_bin, saved_spawn
+        constants.CLAUDE_BIN, subprocess.Popen = saved_bin, saved_spawn
     if note and "/nonexistent/claude" in note and not spawns:
         passed += 1
     else:

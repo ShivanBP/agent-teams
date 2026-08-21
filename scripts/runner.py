@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -134,7 +135,7 @@ def last_said(lane):
 
 def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin_text=None, tee_stderr=False):
     stderr_log = wake_log.with_suffix(".err") if wake_log is not None and tee_stderr else None
-    kwargs = {"cwd": str(cwd), "env": env, "text": True, "timeout": timeout}
+    kwargs = {"cwd": str(cwd), "env": env, "text": True, "start_new_session": True}
     if stdin_text is None:
         # Without DEVNULL an unattended CLI can read or hold the listener's stdin open and block
         # (Peter, 2026-08-16).
@@ -143,17 +144,28 @@ def _run_jsonl(cmd, *, cwd, env, timeout, wake_log, stdin_text=None, tee_stderr=
         # The brief goes down stdin, never argv: in argv it is in every ps listing on the Mac,
         # and a sibling wake's pkill -f matches whatever word of it the pattern shares
         # (Archie, 2026-08-20).
-        kwargs["input"] = stdin_text
+        kwargs["stdin"] = subprocess.PIPE
+
+    def run_process(stdout, stderr):
+        proc = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, **kwargs)
+        try:
+            output, errors = proc.communicate(stdin_text, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+        return subprocess.CompletedProcess(cmd, proc.returncode, output, errors)
+
     if wake_log is None:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        proc = run_process(subprocess.PIPE, subprocess.PIPE)
         return proc, proc.stdout
     wake_log.parent.mkdir(parents=True, exist_ok=True)
     if stderr_log is None:
         with wake_log.open("w") as output:
-            proc = subprocess.run(cmd, stdout=output, stderr=subprocess.PIPE, **kwargs)
+            proc = run_process(output, subprocess.PIPE)
     else:
         with wake_log.open("w") as output, stderr_log.open("w") as errors:
-            proc = subprocess.run(cmd, stdout=output, stderr=errors, **kwargs)
+            proc = run_process(output, errors)
         proc.stderr = stderr_log
     return proc, wake_log.read_text()
 

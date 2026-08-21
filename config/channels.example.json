@@ -1,4 +1,4 @@
 {
-  "Workshop": ["setup", "maintenance", "scheduled-jobs", "status"],
+  "Workshop": ["setup", "maintenance", "status"],
   "Domains": ["foundry", "job-search", "money"]
 }

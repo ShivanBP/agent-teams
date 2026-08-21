@@ -1935,7 +1935,7 @@ BOARD_STATE_KEYS = [
     ("activity", "board"),
     ("workshop", "board-workshop"),
     ("domains", "board-domains"),
-    ("jobfinder", "board-jobfinder"),
+    ("1jf", "board-1jf"),
 ]
 
 CHANNEL_GROUPS = [

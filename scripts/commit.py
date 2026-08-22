@@ -7,7 +7,7 @@ import sys
 
 import constants, store
 REPO_DIR = constants.REPO_DIR
-PERSONAL_DIRS = {"memory", "plans", "agents"}
+PERSONAL_DIRS = {("memory",), ("plans",), (".agents", "agents")}
 PRIVATE_DIR = ".private"
 PUBLIC_ROUTE = ("public paths land through a worktree PR, not commit.py: "
                 "push the branch and merge it on green")
@@ -59,7 +59,7 @@ def _repo_for(paths):
     personal = []
     for path in paths:
         parts = Path(path).parts
-        personal.append(bool(parts and parts[0] in PERSONAL_DIRS))
+        personal.append(any(parts[:len(prefix)] == prefix for prefix in PERSONAL_DIRS))
     if any(personal) and not all(personal):
         raise RitualError("paths span public and private repositories")
     if not any(personal):

@@ -123,7 +123,7 @@ PROGRESS_LINE = "Working, {age}: {said}"
 PROGRESS_DONE = "Done, {age}."
 
 DOMAIN_LINE = (
-    "This channel's domain lives at {root}: read its CLAUDE.md and use its skills/ by path. "
+    "This channel's domain lives at {root}: read its CLAUDE.md and use its .agents/skills/ by path. "
     "They are that repo's, not this session's own, so nothing loads them for you."
 )
 

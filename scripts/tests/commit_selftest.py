@@ -90,9 +90,10 @@ def run(commit_mod):
                 check(code == 2 and needle in err and clean_stash(repo),
                       "refusal %r" % argv, err.strip())
 
-            write(repo, "public.txt", "public\n")
+            (repo / ".agents/skills").mkdir(parents=True)
+            write(repo, ".agents/skills/public.md", "public\n")
             public_head = raw(repo, "rev-parse", "HEAD").stdout.strip()
-            code, _, err = invoke(["-m", "public", "public.txt"])
+            code, _, err = invoke(["-m", "public", ".agents/skills/public.md"])
             results["public path names the PR route"] = (
                 code == 1 and "worktree PR" in err and clean_stash(repo)
                 and public_head == raw(repo, "rev-parse", "HEAD").stdout.strip())
@@ -238,7 +239,7 @@ def run(commit_mod):
             nested = root / "nested"; raw(root, "init", str(nested))
             raw(nested, "config", "user.email", "public@example.com")
             raw(nested, "config", "user.name", "Public")
-            write(nested, ".gitignore", ".private/\nmemory/\nplans/\nagents/*\n")
+            write(nested, ".gitignore", ".private/\nmemory/\nplans/\n.agents/agents/*\n")
             write(nested, ".gitattributes",
                   (Path(__file__).resolve().parents[2] / ".gitattributes").read_text())
             write(nested, "public.txt", "public\n")
@@ -267,13 +268,13 @@ def run(commit_mod):
             overlay(private_git, nested, "branch", "-M", "private-overlay")
             overlay(private_git, nested, "push", "-u", "origin", "private-overlay")
             private_before = overlay(private_git, nested, "rev-parse", "HEAD").stdout.strip()
-            (nested / "plans").mkdir(); (nested / "agents").mkdir()
+            (nested / "plans").mkdir(); (nested / ".agents/agents").mkdir(parents=True)
             write(nested, "memory/routed.txt", "routed\n")
             write(nested, "plans/routed.txt", "plan\n")
-            write(nested, "agents/routed.txt", "agent\n")
+            write(nested, ".agents/agents/routed.txt", "agent\n")
             code, out, _ = invoke([
                 "-m", "route private", "memory/routed.txt", "plans/routed.txt",
-                "agents/routed.txt"])
+                ".agents/agents/routed.txt"])
             public_after = raw(nested, "rev-parse", "HEAD").stdout.strip()
             private_after = overlay(private_git, nested, "rev-parse", "HEAD").stdout.strip()
             results["personal paths route to private overlay"] = (
@@ -283,8 +284,9 @@ def run(commit_mod):
                 == "memory/routed.txt"
                 and overlay(private_git, nested, "ls-files", "--", "plans/routed.txt").stdout.strip()
                 == "plans/routed.txt"
-                and overlay(private_git, nested, "ls-files", "--", "agents/routed.txt").stdout.strip()
-                == "agents/routed.txt"
+                and overlay(private_git, nested, "ls-files", "--",
+                            ".agents/agents/routed.txt").stdout.strip()
+                == ".agents/agents/routed.txt"
                 and overlay(private_git, nested, "check-attr", "merge", "--",
                             "memory/base.txt").stdout.strip()
                 == "memory/base.txt: merge: union"

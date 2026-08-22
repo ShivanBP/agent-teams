@@ -27,11 +27,11 @@ Copy the starters, keep `operator.md` and `bridge.md`, and choose two or three p
 files to begin:
 
 ```sh
-cp agents.examples/*.md agents/
+cp agents.examples/*.md .agents/agents/
 ```
 
 The starters are skeletons, not this fleet's live agent files. Each carries the bare shape of
-a role; the running estate's judgment lives in its own `agents/` and `memory/`, which the
+a role; the running estate's judgment lives in its own `.agents/agents/` and `memory/`, which the
 public repository never ships. Read a starter as a beginning to rewrite, never as a mirror to
 keep in step with whatever this estate's seats do next.
 
@@ -63,19 +63,19 @@ rewrite section by section as your fleet teaches you.
 
 ## Create the private overlay
 
-`memory/`, `plans/`, and `agents/` are ignored by the public repository. `commit.py` refuses
+`memory/`, `plans/`, and `.agents/agents/` are ignored by the public repository. `commit.py` refuses
 personal paths until a private overlay exists. The human creates or chooses a private Git
 remote and supplies its URL. The agent may then run:
 
 ```sh
-mkdir -p .private memory plans agents
+mkdir -p .private memory plans .agents/agents
 git init --bare .private/.git
 git --git-dir=.private/.git --work-tree=. config core.bare false
 git --git-dir=.private/.git --work-tree=. config status.showUntrackedFiles no
 git --git-dir=.private/.git --work-tree=. config user.name "Agent Team"
 git --git-dir=.private/.git --work-tree=. config user.email "agent-team@localhost"
 git --git-dir=.private/.git --work-tree=. remote add origin "$PRIVATE_REPO_URL"
-git --git-dir=.private/.git --work-tree=. add -f -- memory plans agents
+git --git-dir=.private/.git --work-tree=. add -f -- memory plans .agents/agents
 git --git-dir=.private/.git --work-tree=. commit -m "Seed private overlay"
 git --git-dir=.private/.git --work-tree=. branch -M private-overlay
 git --git-dir=.private/.git --work-tree=. push -u origin private-overlay
@@ -121,7 +121,7 @@ the machine: `AGENT_TEAM_CONFIG_DIR`, `AGENT_TEAM_STATE_DIR`, `AGENT_TEAM_LOGS_D
 `AGENT_TEAM_MEMORY_DIR`, `CLAUDE_BIN`, `CODEX_BIN`, `AGY_BIN`, or `OPENCODE_BIN`.
 An install retaining a nondefault launchd label also sets `AGENT_TEAM_LAUNCHD_LABEL` there.
 `BRIDGE_IDENTITY` renames the bridge seat inside the scripts only: an estate that sets it also
-renames `agents/bridge.md`, its zuliprc and its Zulip bot to match.
+renames `.agents/agents/bridge.md`, its zuliprc and its Zulip bot to match.
 
 Render the launchd template from the repository root:
 
@@ -150,7 +150,7 @@ persona in a topic. Adoption is complete when that persona wakes, works, and rep
 
 Cutover is a desktop operation after the export gate passes. Back up the old root, clone the
 public repository into a new folder, and copy only these private surfaces from the old root:
-`memory/`, `plans/`, `agents/`, `.mcp.json`, and the live `config/*.json` files. Run the
+`memory/`, `plans/`, `.agents/agents/`, `.mcp.json`, and the live `config/*.json` files. Run the
 private-overlay bootstrap above with the archived private repository as its remote. Its
 existing `main` remains the old estate history; new personal commits use `private-overlay`.
 

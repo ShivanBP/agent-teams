@@ -597,8 +597,11 @@ def handle_operator_tag(event, mate_id):
     record, _ = build_delta_record(constants.BRIDGE_IDENTITY, channel, topic, None)
     # the tag message is the id the seat opens a loop against: it is the header, never one of
     # Bridge's own posts.
+    domain = constants.domain_root(channel)
     brief = prompts.BRIDGE_BRIEF.format(message=content.strip(), record=record or "",
                                                 loop_note=loop_note, message_id=message_id,
+                                                domain=(prompts.DOMAIN_LINE.format(root=domain) + "\n\n"
+                                                        if domain else ""),
                                                 state=prompts.state_block(store.state_summary()))
     try:
         # agent name and identity are the same word: AGENT_TEAM_IDENTITY carrying it is what

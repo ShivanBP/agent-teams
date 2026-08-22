@@ -119,9 +119,11 @@ def render_cross_channel(messages, site, ids=False):
     return "\n".join(lines)
 
 
-def render_channels(streams):
+def render_channels(streams, domains=None):
     return "\n".join(prompts.CHANNEL_LIST_LINE.format(
-        name=stream["name"], description=stream.get("description", "")) for stream in streams)
+        name=stream["name"], description=stream.get("description", ""),
+        domain=(prompts.CHANNEL_DOMAIN_SUFFIX.format(root=root) if root else ""))
+        for stream in streams for root in [constants.domain_root(stream["name"], domains)])
 
 
 def render_topics(channel, topics):

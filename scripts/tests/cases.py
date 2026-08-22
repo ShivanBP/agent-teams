@@ -231,9 +231,10 @@ READ_NARROWS = [
 ]
 
 CHANNEL_LIST = (
-    [{"name": "general", "description": "Realm-wide chat"},
+    [{"name": "1jf-sweeps", "description": "Jobfinder review"},
      {"name": "setup", "description": "Fleet work"}],
-    "#general: Realm-wide chat\n#setup: Fleet work",
+    {"1jf-sweeps": "/tmp/jobfinder"},
+    "#1jf-sweeps: Jobfinder review [domain: /tmp/jobfinder]\n#setup: Fleet work",
 )
 
 TOPIC_LIST = (
@@ -1649,6 +1650,8 @@ PROMPT_CONTAINS = [
     ("CROSS_CHANNEL_RECORD_LINE", "{message_id}"),
     ("CHANNEL_LIST_LINE", "{name}"),
     ("CHANNEL_LIST_LINE", "{description}"),
+    ("CHANNEL_LIST_LINE", "{domain}"),
+    ("CHANNEL_DOMAIN_SUFFIX", "{root}"),
     ("TOPIC_LIST_LINE", "{channel}"),
     ("TOPIC_LIST_LINE", "{topic}"),
     ("MESSAGE_ID_SUFFIX", "{message_id}"),
@@ -1678,6 +1681,7 @@ PROMPT_CONTAINS = [
     ("OPERATOR_BRIEF", "{state}"),
     ("BRIDGE_BRIEF", "{state}"),
     ("BRIDGE_BRIEF", "{message_id}"),
+    ("BRIDGE_BRIEF", "{domain}"),
     ("BRIDGE_BRIEF", "You are Bridge's Zulip seat"),
     ("BRIDGE_BRIEF", "never drive a browser and never spawn a subagent to drive one"),
     ("BRIDGE_BRIEF", "route to the domain persona in this channel"),
@@ -1760,6 +1764,15 @@ WAKE_DOMAIN_LINES = [
      ["/tmp/domain", "read its CLAUDE.md", "This wake is killed at"], []),
     ("unmapped channel", "elsewhere", "",
      ["This wake is killed at"], ["read its CLAUDE.md"]),
+]
+
+# (label, channel, root constants.domain_root returns, substrings the Rail B brief must and
+# must not carry) for the direct operator-tag call site.
+BRIDGE_DOMAIN_LINES = [
+    ("mapped bridge channel", "1jf-sweeps", "/tmp/jobfinder",
+     ["/tmp/jobfinder", "read its CLAUDE.md"], []),
+    ("unmapped bridge channel", "setup", "",
+     [], ["read its CLAUDE.md"]),
 ]
 
 NOTICED_REPLIES = [

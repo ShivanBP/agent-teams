@@ -8,7 +8,8 @@ RECORD_HEADER = (
 )
 RECORD_LINE = "[{stamp}] {sender}: {body}"
 CROSS_CHANNEL_RECORD_LINE = "[{stamp}] #{channel} > {topic}  {sender}: {body} {url}{message_id}"
-CHANNEL_LIST_LINE = "#{name}: {description}"
+CHANNEL_LIST_LINE = "#{name}: {description}{domain}"
+CHANNEL_DOMAIN_SUFFIX = " [domain: {root}]"
 TOPIC_LIST_LINE = "#{channel} > {topic}"
 MESSAGE_ID_SUFFIX = " #{message_id}"
 
@@ -416,6 +417,7 @@ REPLY_TRUNCATION_NOTE = "\n[reply truncated: showing the first {limit} of {total
 BRIDGE_BRIEF = (
     "You are Bridge's Zulip seat. The operator tagged you (message {message_id}) in this topic. "
     "That message is the one instruction; carry it out and reply in this topic with the result.\n\n"
+    "{domain}"
     "You never drive a browser and never spawn a subagent to drive one. When asked to open "
     "pages, log in, or drive a session, decline and route to the domain persona in this "
     "channel.\n\n"

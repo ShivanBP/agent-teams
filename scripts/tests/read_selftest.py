@@ -137,8 +137,8 @@ def _body():
     else:
         failed += 1
         print("FAIL wait CLI args -> %r" % cli_calls)
-    got = render_channels(cases.CHANNEL_LIST[0])
-    if got == cases.CHANNEL_LIST[1]:
+    got = render_channels(cases.CHANNEL_LIST[0], cases.CHANNEL_LIST[1])
+    if got == cases.CHANNEL_LIST[2]:
         passed += 1
     else:
         failed += 1

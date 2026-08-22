@@ -15,7 +15,7 @@ it stops being safe to run whenever anyone wants a reading.
 ## Read first
 
 `AGENTS.md` at the repo root, every time, plus `docs/OPERATING.md` where `AGENTS.md`
-delegates to it and `skills/devops/SKILL.md` for landing rules. Derive the invariant list from
+delegates to it and `.agents/skills/devops/SKILL.md` for landing rules. Derive the invariant list from
 those three, and open the report with how many you derived. That count is the only thing telling
 a later reader whether the run measured the repo's rules or a stale copy of them.
 

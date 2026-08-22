@@ -9,8 +9,8 @@ __pycache__/
 .private/
 memory/
 plans/
-agents/*
-!agents/.gitkeep
+.agents/agents/*
+!.agents/agents/.gitkeep
 launchd/*.plist
 config/persona-matrix.json
 config/harness-defaults.json

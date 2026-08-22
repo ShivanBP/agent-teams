@@ -19,7 +19,7 @@ import prompts
 import store
 
 REPO_DIR = Path(__file__).resolve().parent.parent
-PERSONA_DIR = REPO_DIR / "agents"
+PERSONA_DIR = REPO_DIR / ".agents" / "agents"
 # provider -> the constants name holding its binary, which is also the env override that sets it
 PROVIDER_BIN = {"claude": "CLAUDE_BIN", "codex": "CODEX_BIN",
                 "agy": "AGY_BIN", "opencode": "OPENCODE_BIN"}

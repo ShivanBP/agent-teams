@@ -12,7 +12,7 @@ Secrets live in ~/.config/agent-team/ and never in this repo. Token and .env wor
 the operator's, always. Never print or log a zuliprc's contents. A wake does not grant itself
 capabilities.
 
-Personal content lives only in `memory/`, `plans/`, `agents/`, and gitignored config.
+Personal content lives only in `memory/`, `plans/`, `.agents/agents/`, and gitignored config.
 Machinery runs unmodified in any estate: persona names, channel names, models, and absolute
 paths live in the config JSONs, never in `scripts/`; a change that needs an estate value in a
 shared file moves the value to config first.
@@ -42,10 +42,10 @@ Every effort in those files uses low/mid/high/xtra. A posted string literal anyw
 a bug. Every module carries --selftest, offline; bodies live in `scripts/tests/`; a test body
 imports what it uses; a case table changes in the same commit as its organ.
 
-Fleet skills live in `skills/`, one directory each with a `SKILL.md`; personas live in
-`agents/`. Harnesses discover them through symlinks, never edited: `.claude/agents` and
-`.claude/skills` for Claude Code, `.agents/skills` for Codex, OpenCode and agy, and
-`.agents/agents` for agy alone. Nothing under `.codex/`: Codex reads `.agents/skills`, and
+Fleet skills live in `.agents/skills/`, one directory each with a `SKILL.md`; personas live in
+`.agents/agents/`. Claude Code discovers them through the symlinks `.claude/skills` and
+`.claude/agents`; Codex, OpenCode and agy read `.agents/` natively. Nothing under `.codex/`:
+Codex reads `.agents/skills`, and
 its subagent format is TOML, not our Markdown.
 
 Subagents: name the model on every one you spawn, because unnamed means inherited and a
@@ -65,7 +65,7 @@ Private-repo git mutations run only through `python3 scripts/commit.py -m "messa
 lock wait fails. Report named files left written but uncommitted. Read-only git and worktree git
 stay outside this ritual.
 
-How changes land is in `skills/devops` of the repo you are landing in. Read it before the
+How changes land is in `.agents/skills/devops` of the repo you are landing in. Read it before the
 first commit. A repo without one: open a PR and stop.
 
 ## Taste

@@ -73,9 +73,9 @@ Route by who the sentence binds, not by what it is about:
 |---|---|---|
 | every persona, every harness | fleet `AGENTS.md` | propose only |
 | one persona's standing behaviour | that persona's agent file | propose only |
-| a trigger plus ordered steps, fleet-wide | fleet `skills/` | yes, directly |
+| a trigger plus ordered steps, fleet-wide | fleet `.agents/skills/` | yes, directly |
 | one project, must always apply there | that project's `AGENTS.md` | propose only |
-| one project, looked up when relevant | that project's `skills/` | propose only |
+| one project, looked up when relevant | that project's `.agents/skills/` | propose only |
 | nobody, it only explains why a decision went that way | stays in `memory/` | n/a |
 
 The last row is the one that gets forgotten, and it is where most of memory correctly stays.

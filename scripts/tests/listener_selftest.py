@@ -363,6 +363,52 @@ def _body():
             failed += 1
             print("FAIL %s brief lacks %r" % (label, substring))
 
+    # Rail B gets the same domain line as a persona wake, driven through the tag handler so
+    # a correct lookup that is not passed into BRIDGE_BRIEF still turns this row red.
+    for index, (label, channel, root, required, forbidden) in enumerate(cases.BRIDGE_DOMAIN_LINES):
+        asked = []
+        prompts_seen = []
+
+        def _capture_bridge_run(persona, prompt, **kw):
+            prompts_seen.append(prompt)
+            raise _Stop("stop")
+
+        def _stub_bridge_domain(name, root=root):
+            asked.append(name)
+            return root
+
+        saved_domain = (runner.run, loops.loop_for_lane, build_delta_record,
+                        constants.domain_root, send_mod.react, send_mod.post,
+                        api.load, api.request, log.disabled)
+        try:
+            log.disabled = True
+            runner.run = _capture_bridge_run
+            loops.loop_for_lane = lambda *a, **k: None
+            globals()["build_delta_record"] = lambda *a, **k: ("", None)
+            constants.domain_root = _stub_bridge_domain
+            send_mod.react = lambda *a, **k: None
+            send_mod.post = lambda *a, **k: None
+            api.load = lambda identity: identity
+            api.request = lambda *a, **k: {"result": "error"}
+            handle_operator_tag({"message": {
+                "sender_id": 7, "id": 90 + index, "stream_id": 10 + index,
+                "content": "go", "display_recipient": channel, "subject": label,
+                "timestamp": time.time()}}, 7)
+        finally:
+            runner.run, loops.loop_for_lane = saved_domain[:2]
+            globals()["build_delta_record"] = saved_domain[2]
+            constants.domain_root = saved_domain[3]
+            send_mod.react, send_mod.post = saved_domain[4:6]
+            api.load, api.request, log.disabled = saved_domain[6:9]
+        text = prompts_seen[0] if prompts_seen else ""
+        if (asked == [channel] and all(part in text for part in required)
+                and all(part not in text for part in forbidden)):
+            passed += 1
+        else:
+            failed += 1
+            print("FAIL %s asked %r wanted [%r], prompt required %r forbidden %r" %
+                  (label, asked, channel, required, forbidden))
+
     expected_failure_posts = [
         (constants.BRIDGE_IDENTITY, "c", "t",
          prompts.OPERATOR_CONTINUATION_FAILED.format(reason="529 Overloaded"), ""),

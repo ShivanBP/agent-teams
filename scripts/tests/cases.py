@@ -1628,6 +1628,8 @@ WAKE_HEADER_CONTAINS = [
     "Tagging a persona in your reply wakes it once",
     "send.py --ask <persona>",
     "read.py --wait --after <id> --from <persona> --for 300",
+    "If you need the answer to continue your work, ask and wait",
+    "A persona-triggered wake names who Mate should tag",
 ]
 
 # (prompts attribute name, required substring): guards strings whose content no other table
